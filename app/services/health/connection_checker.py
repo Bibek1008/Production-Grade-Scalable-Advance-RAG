@@ -18,7 +18,8 @@ from qdrant_client import QdrantClient
 from redis import Redis
 
 from app.config import settings
-from app.gateway import get_gemini_llm
+from app.gateway import get_portkey_llm
+from app.services.retrieval.embedding import get_embedding_dim
 
 
 class ConnectionResult:
@@ -117,22 +118,30 @@ def _check_qdrant() -> ConnectionResult:
                 False,
                 f"Collection '{settings.QDRANT_COLLECTION}' does not exist; ingest documents first.",
             )
-        return ConnectionResult("qdrant", True, "Qdrant and configured collection reachable")
+        collection = client.get_collection(settings.QDRANT_COLLECTION)
+        vectors = collection.config.params.vectors
+        if isinstance(vectors, dict) or vectors.size != get_embedding_dim():
+            return ConnectionResult(
+                "qdrant",
+                False,
+                f"Configured collection vector dimensions do not match the {get_embedding_dim()}-dimensional retriever.",
+            )
+        return ConnectionResult("qdrant", True, "Qdrant collection reachable with compatible vector dimensions")
     except Exception as e:
         logfire.warning(f"Qdrant health check failed: {_failure_message(e)}")
         return ConnectionResult("qdrant", False, _failure_message(e))
 
 
-def _check_gemini() -> ConnectionResult:
-    """Verify Gemini responds to a minimal prompt."""
+def _check_portkey() -> ConnectionResult:
+    """Verify the configured Portkey route returns a Gemini response."""
     try:
-        response = get_gemini_llm().invoke("Say hello in one word.")
+        response = get_portkey_llm().bind(max_tokens=8).invoke("Say hello in one word.")
         if isinstance(response.content, str) and response.content.strip():
-            return ConnectionResult("gemini", True, "Gemini API reachable")
-        raise RuntimeError("Gemini returned an empty response")
+            return ConnectionResult("portkey", True, "Configured Portkey generation route reachable")
+        raise RuntimeError("Portkey returned an empty response")
     except Exception as e:
-        logfire.warning(f"Gemini health check failed: {_failure_message(e)}")
-        return ConnectionResult("gemini", False, _failure_message(e))
+        logfire.warning(f"Portkey health check failed: {_failure_message(e)}")
+        return ConnectionResult("portkey", False, _failure_message(e))
 
 
 def _check_jina_embeddings() -> ConnectionResult:
@@ -233,7 +242,7 @@ _CHECKERS: list[Callable[[], ConnectionResult]] = [
     _check_neon_postgres,
     _check_upstash_redis,
     _check_qdrant,
-    _check_gemini,
+    _check_portkey,
     _check_jina_embeddings,
     _check_jina_reranker,
     _check_logfire,

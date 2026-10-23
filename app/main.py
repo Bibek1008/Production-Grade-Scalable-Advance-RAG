@@ -6,17 +6,10 @@ import logfire
 
 from app.config import settings
 
-# Logfire v2 EU tokens start with "pylf_v2_eu_" and must send spans to the
-# EU endpoint. If no base URL is configured, infer it from the token prefix
-# so the same .env works locally and inside Docker without manual overrides.
-_logfire_base_url = settings.LOGFIRE_BASE_URL
-if not _logfire_base_url and settings.LOGFIRE_TOKEN:
-    if settings.LOGFIRE_TOKEN.startswith("pylf_v2_eu_"):
-        _logfire_base_url = "https://logfire-eu.pydantic.dev"
-
 logfire.configure(
     token=settings.LOGFIRE_TOKEN,
-    advanced=logfire.AdvancedOptions(base_url=_logfire_base_url) if _logfire_base_url else None,
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
 )
 
 # Now safe to import app modules - logfire is already active
@@ -276,7 +269,8 @@ def query(
             RAG_REQUESTS_TOTAL.labels(status="error").inc()
             RAG_REQUEST_DURATION.observe(time.perf_counter() - start)
             logfire.error(
-                f"❌ RAG pipeline failed: {e}",
+                "RAG pipeline failed",
+                error_type=type(e).__name__,
                 request_id=request_id,
                 thread_id=thread_id,
             )

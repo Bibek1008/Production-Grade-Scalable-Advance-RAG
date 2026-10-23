@@ -1,12 +1,15 @@
 # Enterprise Agentic RAG
 
-Agentic retrieval-augmented generation built with LangGraph, Google Gemini, Qdrant, Jina AI, and NeMo Guardrails.
+Agentic retrieval-augmented generation built with LangGraph, Portkey-routed Google Gemini, Qdrant, Jina AI, and NeMo Guardrails.
 
 ## Current runtime
 
-- Planner, responder, and guardrails use Gemini through Google's OpenAI-compatible endpoint:
-  `https://generativelanguage.googleapis.com/v1beta/openai/`.
-- Default model: `gemini-flash-lite-latest`; override with `GEMINI_MODEL`.
+- Planner, responder, and guardrails use the Portkey OpenAI-compatible gateway. `PORTKEY_PRIMARY_CONFIG_ID`
+  selects the saved primary/fallback configuration, and `PORTKEY_PRIMARY_SLUG` selects the Gemini model route.
+- Default generation model: `gemini-flash-lite-latest`; override with `GEMINI_MODEL`.
+- RAGAS evaluation uses Gemini independently through Google's OpenAI-compatible endpoint. Set
+  `JUDGE_PROVIDER=gemini`, `JUDGE_GEMINI_MODEL`, and optionally `JUDGE_GEMINI_API_KEY` (otherwise
+  the judge uses `GEMINI_API_KEY`). No OpenAI key is required.
 - Qdrant stores document vectors. Jina `jina-embeddings-v3` uses 1024-dimensional vectors.
 - If `JINA_API_KEY` is absent, embeddings use local `mixedbread-ai/mxbai-embed-large-v1` instead. Do not switch embedding providers for an existing collection: matching dimensions do not mean matching vector spaces.
 - Jina reranking, Neon conversation persistence, Upstash distributed rate limiting, Logfire, and LangSmith are optional.
@@ -26,7 +29,9 @@ notepad .env
 
 If PowerShell does not allow virtual-environment activation, do not change the machine execution policy. Invoke `.\.venv\Scripts\python.exe` directly instead.
 
-Set `GEMINI_API_KEY` and your Qdrant connection in `.env`. Configure `JINA_API_KEY` if you want Jina embeddings and reranking. Leave Neon and Upstash values empty for local in-memory operation.
+Set `GEMINI_API_KEY`, all four `PORTKEY_*` values, and your Qdrant connection in `.env`. Configure
+`JINA_API_KEY` if you want Jina embeddings and reranking. Leave Neon and Upstash values empty for
+local in-memory operation. The saved Portkey config must retain the intended Gemini fallback route.
 
 Docker Compose starts a local Qdrant service and routes the API container to it. To use a cloud Qdrant from Compose, set `DOCKER_QDRANT_URL` and `DOCKER_QDRANT_API_KEY` in `.env`; these override the local service route.
 
@@ -52,7 +57,10 @@ Start the API and UI in separate PowerShell terminals:
 .\.venv\Scripts\python.exe -m streamlit run ui/app.py
 ```
 
-Check liveness at `http://localhost:8000/health` and readiness at `http://localhost:8000/ready`. Readiness requires Gemini, Qdrant, and the configured Qdrant collection. Optional-service failures are reported but do not make the API unready. Readiness performs small Gemini/Jina probes and caches their results for 30 seconds.
+Check liveness at `http://localhost:8000/health` and readiness at `http://localhost:8000/ready`. Readiness
+requires the configured Portkey route, Qdrant collection, and matching vector dimensions. Optional-service
+failures are reported but do not make the API unready. Readiness performs small Portkey/Jina probes and
+caches their results for 30 seconds.
 
 ## Verify and test
 
@@ -70,4 +78,5 @@ This does not create infrastructure or write/delete Qdrant data. Calls may consu
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-The OpenAI key is only used as an optional RAGAS evaluation judge; it is not needed for application inference.
+The live integration smoke test includes a minimal Gemini-backed RAGAS faithfulness score, a Portkey
+generation request, Qdrant retrieval, and read-only Neon/Upstash checks. These provider calls may consume quota.

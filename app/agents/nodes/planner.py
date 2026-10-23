@@ -1,9 +1,9 @@
 import logfire
 
 from app.agents.state import AgentState
-from app.gateway import get_gemini_llm
+from app.gateway import get_portkey_llm
 
-llm = get_gemini_llm()
+llm = get_portkey_llm()
 
 
 def planner_node(state: AgentState):

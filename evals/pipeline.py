@@ -13,13 +13,19 @@ import time
 import logfire
 import requests
 
-API_URL = "http://localhost:8000/query"
-STATUS_URL_TEMPLATE = "http://localhost:8000/query/status/{job_id}"
+from app.config import settings
+
+API_URL = f"{settings.backend_url}/query"
+STATUS_URL_TEMPLATE = f"{settings.backend_url}/query/status/{{job_id}}"
 RESPONSE_TRUNCATE = 300
 DELAY_BETWEEN_CALLS = 10  # seconds — avoid exhausting provider quotas during evals
 REQUEST_TIMEOUT = 120  # seconds — guardrails + LangGraph can take >60s
 POLL_INTERVAL = 3  # seconds between job status polls
 MAX_POLL_ATTEMPTS = 60  # ~3 minutes max wait per sample
+
+
+def _api_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {settings.API_KEY}"} if settings.API_KEY else {}
 
 
 def detect_tool(thought_process: list) -> str:
@@ -44,7 +50,7 @@ def _poll_for_result(job_id: str) -> dict:
     url = STATUS_URL_TEMPLATE.format(job_id=job_id)
     for attempt in range(MAX_POLL_ATTEMPTS):
         with logfire.span("🔄 Eval polling job", job_id=job_id, attempt=attempt + 1):
-            resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(url, headers=_api_headers(), timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
 
@@ -64,6 +70,7 @@ def _fetch_query_result(question: str, thread_id: str) -> dict:
     resp = requests.post(
         API_URL,
         json={"q": question, "thread_id": thread_id},
+        headers=_api_headers(),
         timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
@@ -122,17 +129,8 @@ def run_pipeline(golden_dataset: dict, progress_callback=None) -> dict:
                         context_chunks=len(sources),
                     )
 
-                except requests.exceptions.ConnectionError:
-                    logfire.error("❌ Cannot reach FastAPI — is the app running on :8000?")
-                    sample["actual_response"] = ""
-                    sample["actual_contexts"] = sample.get("relevant_contexts", [])
-                    sample["actual_tools_called"] = ["unknown"]
-
-                except Exception as e:
-                    logfire.error(f"❌ Query failed: {e}")
-                    sample["actual_response"] = ""
-                    sample["actual_contexts"] = sample.get("relevant_contexts", [])
-                    sample["actual_tools_called"] = ["unknown"]
+                except requests.exceptions.ConnectionError as error:
+                    raise RuntimeError(f"Cannot reach the FastAPI backend at {settings.backend_url}.") from error
 
             if progress_callback:
                 progress_callback(i, n, question, "done", sample["actual_response"])
@@ -150,5 +148,5 @@ def save_results(dataset: dict, path: str) -> None:
 
 def load_golden_dataset() -> dict:
     golden_path = os.path.join(os.path.dirname(__file__), "golden_dataset.json")
-    with open(golden_path) as f:
+    with open(golden_path, encoding="utf-8") as f:
         return json.load(f)

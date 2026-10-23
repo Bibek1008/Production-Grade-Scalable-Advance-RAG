@@ -2,9 +2,9 @@ import logfire
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from app.agents.state import AgentState
-from app.gateway import get_gemini_llm
+from app.gateway import get_portkey_llm
 
-llm = get_gemini_llm()
+llm = get_portkey_llm()
 
 
 def generate_node(state: AgentState):
@@ -91,7 +91,7 @@ def generate_node(state: AgentState):
             content = response.content
             if not isinstance(content, str) or not content.strip():
                 raise RuntimeError("Gemini returned an empty response.")
-            logfire.info("✅ Response synthesised via Gemini.")
+            logfire.info("Response synthesised via the configured Portkey Gemini route.")
 
             return {
                 "final_answer": content,

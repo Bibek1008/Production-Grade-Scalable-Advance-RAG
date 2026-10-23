@@ -13,7 +13,7 @@ from app.config import settings
 def test_guardrails_use_configured_gemini_prompt(monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-test-model")
     monkeypatch.setattr(guardrails, "_rails", None)
-    monkeypatch.setattr(guardrails, "get_gemini_llm", lambda: object())
+    monkeypatch.setattr(guardrails, "get_portkey_llm", lambda: object())
     monkeypatch.setattr(guardrails, "LLMRails", lambda config, llm: config)
 
     guardrails.initialize_rails()

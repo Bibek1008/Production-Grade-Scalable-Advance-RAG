@@ -1,4 +1,3 @@
-import os
 import time
 import uuid
 
@@ -6,13 +5,16 @@ import logfire
 import requests
 import streamlit as st
 
+from app.config import settings
+
 # Initialize Logfire
-try:
-    logfire.configure(token=st.secrets.get("LOGFIRE_TOKEN", os.getenv("LOGFIRE_TOKEN")))
-    logfire.instrument_requests()  # propagates trace context to the FastAPI backend
-    LOGFIRE_STATUS = "Connected & Tracing"
-except Exception:
-    LOGFIRE_STATUS = "Standby (No Token)"
+logfire.configure(
+    token=settings.LOGFIRE_TOKEN,
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
+)
+logfire.instrument_requests()
+LOGFIRE_STATUS = "Configured" if settings.LOGFIRE_TOKEN else "Local only (LOGFIRE_TOKEN not set)"
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -38,7 +40,7 @@ with st.sidebar:
     st.title("🧠 Agent OS")
     st.markdown("---")
 
-    base_url = "http://localhost:8000"
+    base_url = settings.backend_url
 
     st.markdown("---")
     st.success(f"Logfire: {LOGFIRE_STATUS}")
@@ -75,7 +77,10 @@ if prompt := st.chat_input("Ask about your documentation..."):
                     with logfire.span("📡 Calling RAG Backend"):
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
-                        response = requests.post(url, json=payload, timeout=60)
+                        headers = {}
+                        if settings.API_KEY:
+                            headers["Authorization"] = f"Bearer {settings.API_KEY}"
+                        response = requests.post(url, json=payload, headers=headers, timeout=300)
 
                         if response.status_code != 200:
                             st.error(f"Backend Error: {response.status_code} - {response.text}")

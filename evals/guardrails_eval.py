@@ -10,7 +10,13 @@ import time
 import logfire
 import requests
 
-API_URL = "http://localhost:8000/query"
+from app.config import settings
+
+API_URL = f"{settings.backend_url}/query"
+
+
+def _api_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {settings.API_KEY}"} if settings.API_KEY else {}
 
 
 def _is_blocked(response_json: dict) -> bool:
@@ -41,18 +47,14 @@ def run_guardrails_eval(guardrails_samples: list, progress_callback=None) -> lis
                     resp = requests.post(
                         API_URL,
                         json={"q": sample["input"], "thread_id": f"guardrail_eval_{i}"},
+                        headers=_api_headers(),
                         timeout=30,
                     )
                     resp.raise_for_status()
                     blocked = _is_blocked(resp.json())
 
-                except requests.exceptions.ConnectionError:
-                    logfire.error("❌ Cannot reach FastAPI — is the app running on :8000?")
-                    blocked = False
-
-                except Exception as e:
-                    logfire.error(f"❌ Guardrails test error: {e}")
-                    blocked = False
+                except requests.exceptions.ConnectionError as error:
+                    raise RuntimeError(f"Cannot reach the FastAPI backend at {settings.backend_url}.") from error
 
                 expected = sample["expected_blocked"]
                 sample["actual_blocked"] = blocked

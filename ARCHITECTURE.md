@@ -1,4 +1,4 @@
-# Enterprise Agentic RAG: LangGraph · Gemini · Guardrails · RAGAS Evals
+# Enterprise Agentic RAG: LangGraph · Portkey/Gemini · Guardrails · RAGAS Evals
 
 ```mermaid
 graph LR
@@ -33,10 +33,10 @@ graph LR
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
     end
 
-    %% ── Gemini ───────────────────────────────────────────────────────────────
-    subgraph GEMINI ["🌐  Gemini API"]
+    %% ── Generation Gateway ───────────────────────────────────────────────────
+    subgraph PORTKEY ["🌐  Portkey Gateway"]
         direction TB
-        GM["🤖 Gemini\n gemini-flash-lite-latest"]
+        GM["🤖 Gemini primary + configured fallback\nPortkey saved config"]
     end
 
     %% ── Ingestion ────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ graph LR
         GD[("📋 Golden Dataset\n15 Samples · 6 Guardrail Tests")]
         RAGAS["RAGAS Metrics\nFaithfulness · Relevancy\nPrecision · Recall · Correctness"]
         TC["Tool Correctness\nJaccard · Zero LLM"]
-        JUDGE["⚖️ Judge LLM\nOpenAI · JUDGE_OPENAI_API_KEY"]
+        JUDGE["⚖️ Judge LLM\nGemini · JUDGE_GEMINI_MODEL"]
     end
 
     %% ── Main Query Flow ──────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ graph TB
         direction LR
         QD[("🗄️ Qdrant Cloud\nVector DB")]
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
-        GM["🤖 Google Gemini OpenAI-compatible API\ngemini-flash-lite-latest"]
+        GM["🤖 Portkey Gateway\nGemini primary + saved fallback config"]
     end
 
     subgraph INGEST ["5. Data Ingestion"]
@@ -162,7 +162,7 @@ graph TB
         GD[("📋 Golden Dataset\n15 RAG Samples · 6 Guardrail Tests")]
         RAGAS["RAGAS Metrics\nFaithfulness · Relevancy · Precision\nRecall · Correctness"]
         TC["Tool Correctness\nJaccard · Zero LLM Cost"]
-        JG["⚖️ Judge LLM\nOpenAI · Separate Key"]
+        JG["⚖️ Judge LLM\nGemini · optional separate key"]
     end
 
     subgraph OBS ["7. Monitoring & Observability"]
@@ -232,7 +232,7 @@ graph TB
     B["⚡ 2. FastAPI + 🛡️ NeMo Guardrails"]
     C["🧠 3. LangGraph Agent\nPlanner → Retriever → Responder"]
     D["🗄️ 4. Qdrant Cloud\n+ Jina AI Reranker"]
-    E["🌐 5. Google Gemini OpenAI-compatible API\ngemini-flash-lite-latest"]
+    E["🌐 5. Portkey Gateway\nGemini primary + saved fallback config"]
     F["📥 6. Data Ingestion\nLocal Parsers · Jina Embeddings · processed_data/"]
     G["🧪 7. RAGAS Evals\nFaithfulness · Precision · Recall · Correctness"]
     H["📡 8. Monitoring\nLogfire · LangSmith"]

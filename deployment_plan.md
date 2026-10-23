@@ -78,23 +78,31 @@ Store all sensitive values in **AWS Secrets Manager** and inject them into task 
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `QDRANT_URL`
+- `QDRANT_CLUSTER_ENDPOINT` (alternate endpoint variable; configure only one)
 - `QDRANT_API_KEY`
 - `GEMINI_API_KEY`
+- `PORTKEY_API_KEY`
+- `PORTKEY_PRIMARY_CONFIG_ID`
 - `JINA_API_KEY`
 - `RAG_API_KEY` (production auth)
 - `LOGFIRE_TOKEN`
 - `LANGSMITH_API_KEY`
-- `JUDGE_OPENAI_API_KEY` (optional) — Dedicated OpenAI key for the RAGAS eval judge; not required in the ECS API task definition.
+- `JUDGE_GEMINI_API_KEY` (optional) — Dedicated Gemini key for RAGAS evaluation; falls back to `GEMINI_API_KEY`.
 
 ### Plain environment variables
 
 - `QDRANT_COLLECTION=enterprise_rag`
 - `RATE_LIMIT_PER_MINUTE=60`
 - `GEMINI_MODEL=gemini-flash-lite-latest` (optional; this is the application default)
+- `PORTKEY_PRIMARY_SLUG`
+- `PORTKEY_FALLBACK_SLUG`
+- `JUDGE_PROVIDER=gemini`
+- `JUDGE_GEMINI_MODEL`
+- `BACKEND_URL` (for a separately deployed UI; use the API base URL)
 - `STRICT_STARTUP=true` (production only; set to `false` for local development)
 - `PYTHONUNBUFFERED=1`
 
-> **Note on `STRICT_STARTUP`:** When `true`, the FastAPI server refuses to start if a required dependency (Gemini or Qdrant with its configured collection) is unreachable. Neon, Upstash, observability, and reranking are optional.
+> **Note on `STRICT_STARTUP`:** When `true`, the FastAPI server refuses to start if the configured Portkey generation route or Qdrant collection is unreachable. Neon, Upstash, observability, and reranking are optional.
 
 > **Note on embedding dimension:** The app uses `jina-embeddings-v3` which produces **1024-dimensional** vectors. The Qdrant collection must be created with `size=1024` and `distance=Cosine`. The ingestion script (`app.ingestion.processor`) probes the model at runtime and creates the collection with the correct dimension automatically.
 

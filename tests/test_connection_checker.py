@@ -1,15 +1,16 @@
 """Tests for app.services.health.connection_checker."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import requests
 
 from app.services.health.connection_checker import (
     ConnectionResult,
-    _check_gemini,
     _check_jina_embeddings,
     _check_jina_reranker,
     _check_neon_postgres,
+    _check_portkey,
     _check_qdrant,
     _check_upstash_redis,
     check_all_connections,
@@ -92,7 +93,13 @@ def test_check_upstash_redis_unconfigured_uses_memory():
 
 def test_check_qdrant_success():
     mock_client = MagicMock()
-    with patch("app.services.health.connection_checker.QdrantClient", return_value=mock_client):
+    mock_client.get_collection.return_value = SimpleNamespace(
+        config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(size=1024)))
+    )
+    with (
+        patch("app.services.health.connection_checker.QdrantClient", return_value=mock_client),
+        patch("app.services.health.connection_checker.get_embedding_dim", return_value=1024),
+    ):
         result = _check_qdrant()
     assert result.healthy is True
     assert result.name == "qdrant"
@@ -114,20 +121,20 @@ def test_check_qdrant_failure():
     assert result.healthy is False
 
 
-def test_check_gemini_success():
+def test_check_portkey_success():
     mock_resp = MagicMock(content="hi")
-    with patch("app.services.health.connection_checker.get_gemini_llm") as mock_llm:
-        mock_llm.return_value.invoke.return_value = mock_resp
-        result = _check_gemini()
+    with patch("app.services.health.connection_checker.get_portkey_llm") as mock_llm:
+        mock_llm.return_value.bind.return_value.invoke.return_value = mock_resp
+        result = _check_portkey()
     assert result.healthy is True
-    assert result.name == "gemini"
+    assert result.name == "portkey"
 
 
-def test_check_gemini_empty_response():
+def test_check_portkey_empty_response():
     mock_resp = MagicMock(content="")
-    with patch("app.services.health.connection_checker.get_gemini_llm") as mock_llm:
-        mock_llm.return_value.invoke.return_value = mock_resp
-        result = _check_gemini()
+    with patch("app.services.health.connection_checker.get_portkey_llm") as mock_llm:
+        mock_llm.return_value.bind.return_value.invoke.return_value = mock_resp
+        result = _check_portkey()
     assert result.healthy is False
 
 

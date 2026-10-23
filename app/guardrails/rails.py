@@ -2,7 +2,7 @@ import logfire
 from nemoguardrails import LLMRails, RailsConfig
 
 from app.config import settings
-from app.gateway import get_gemini_llm
+from app.gateway import get_portkey_llm
 from app.guardrails.colang_rules import COLANG_CONTENT, RAIL_INDICATORS, YAML_CONTENT
 
 _rails: LLMRails | None = None
@@ -11,11 +11,11 @@ _rails: LLMRails | None = None
 def initialize_rails() -> None:
     """
     Build the NeMo LLMRails singleton at app startup.
-    Uses the configured Gemini model for intent classification at the gate.
+    Uses the configured Portkey Gemini model for intent classification at the gate.
     """
     global _rails
 
-    guard_llm = get_gemini_llm()
+    guard_llm = get_portkey_llm()
 
     yaml_content = YAML_CONTENT.replace(
         "model: gemini-flash-lite-latest",

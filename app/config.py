@@ -1,6 +1,7 @@
 """Centralized, Pydantic-validated application settings."""
 
 import os
+from pathlib import Path
 from urllib.parse import quote, urlunsplit
 
 from pydantic import AliasChoices, Field, field_validator
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parent.parent / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         env_ignore_empty=True,
@@ -28,9 +29,16 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-flash-lite-latest"
 
-    # --- OPTIONAL OPENAI EVAL JUDGE ---
-    OPENAI_API_KEY: str | None = None
-    JUDGE_OPENAI_API_KEY: str | None = None
+    # --- PORTKEY GENERATION ROUTING ---
+    PORTKEY_API_KEY: str | None = None
+    PORTKEY_PRIMARY_SLUG: str | None = None
+    PORTKEY_FALLBACK_SLUG: str | None = None
+    PORTKEY_PRIMARY_CONFIG_ID: str | None = None
+
+    # --- RAGAS GEMINI EVALUATION JUDGE ---
+    JUDGE_PROVIDER: str = "gemini"
+    JUDGE_GEMINI_API_KEY: str | None = None
+    JUDGE_GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # --- QDRANT VECTOR DB ---
     QDRANT_URL: str = Field(
@@ -60,10 +68,16 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "rag_scale_test"
     LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
 
+    # --- DEPLOYMENT ---
+    BACKEND_URL: str = "http://localhost:8000"
+
     @field_validator(
         "JINA_API_KEY",
-        "OPENAI_API_KEY",
-        "JUDGE_OPENAI_API_KEY",
+        "PORTKEY_API_KEY",
+        "PORTKEY_PRIMARY_SLUG",
+        "PORTKEY_FALLBACK_SLUG",
+        "PORTKEY_PRIMARY_CONFIG_ID",
+        "JUDGE_GEMINI_API_KEY",
         "QDRANT_API_KEY",
         "NEON_DB_URL",
         "UPSTASH_REDIS_REST_URL",
@@ -78,9 +92,23 @@ class Settings(BaseSettings):
         return value
 
     @property
-    def judge_api_key(self) -> str | None:
-        """Dedicated judge key, falling back to the optional OpenAI key."""
-        return self.JUDGE_OPENAI_API_KEY or self.OPENAI_API_KEY
+    def judge_gemini_api_key(self) -> str | None:
+        """Use the dedicated Gemini judge key, falling back to the runtime key."""
+        return self.JUDGE_GEMINI_API_KEY or self.GEMINI_API_KEY
+
+    @property
+    def backend_url(self) -> str:
+        """Return the configured backend origin, defaulting to local development."""
+        return self.BACKEND_URL.strip().rstrip("/") or "http://localhost:8000"
+
+    @property
+    def logfire_base_url(self) -> str | None:
+        """Return an explicit Logfire endpoint or infer the EU endpoint from its token."""
+        if self.LOGFIRE_BASE_URL:
+            return self.LOGFIRE_BASE_URL
+        if self.LOGFIRE_TOKEN and self.LOGFIRE_TOKEN.startswith("pylf_v2_eu_"):
+            return "https://logfire-eu.pydantic.dev"
+        return None
 
     @property
     def postgres_uri(self) -> str:
@@ -124,13 +152,14 @@ def apply_langchain_env():
     are set — enabling tracing without a key causes LangChain to emit 401 noise
     on every LangGraph step.
     """
-    if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
-        os.environ.setdefault("LANGCHAIN_TRACING_V2", settings.LANGSMITH_TRACING)
-        os.environ.setdefault("LANGCHAIN_API_KEY", settings.LANGSMITH_API_KEY)
+    tracing_enabled = settings.LANGSMITH_TRACING.lower() in {"true", "1", "yes", "on"}
+    os.environ["LANGCHAIN_TRACING_V2"] = str(tracing_enabled and bool(settings.LANGSMITH_API_KEY)).lower()
+    if settings.LANGSMITH_API_KEY:
+        os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
     if settings.LANGSMITH_PROJECT:
-        os.environ.setdefault("LANGCHAIN_PROJECT", settings.LANGSMITH_PROJECT)
+        os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
     if settings.LANGSMITH_ENDPOINT:
-        os.environ.setdefault("LANGCHAIN_ENDPOINT", settings.LANGSMITH_ENDPOINT)
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
 
 
 apply_langchain_env()
