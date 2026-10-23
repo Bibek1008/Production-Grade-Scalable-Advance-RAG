@@ -26,27 +26,46 @@ def _fail(name: str, message: str = "fail") -> ConnectionResult:
 
 
 def test_check_neon_postgres_success():
-    mock_pool = MagicMock()
     mock_conn = MagicMock()
-    mock_pool.getconn.return_value = mock_conn
+    mock_connect = MagicMock()
+    mock_connect.return_value.__enter__.return_value = mock_conn
     with (
         patch("app.services.health.connection_checker.settings.NEON_DB_URL", "postgresql://test"),
-        patch("app.services.health.connection_checker.ConnectionPool", return_value=mock_pool),
+        patch("app.services.health.connection_checker.psycopg.connect", mock_connect),
     ):
         result = _check_neon_postgres()
     assert result.healthy is True
     assert result.name == "postgres"
+    mock_connect.assert_called_once()
+    assert mock_connect.call_args.kwargs["connect_timeout"] == 5
+    mock_conn.cursor.return_value.__enter__.return_value.execute.assert_called_once_with("SELECT 1")
+    mock_connect.return_value.__exit__.assert_called_once()
 
 
-def test_check_neon_postgres_failure():
+def test_check_neon_postgres_failure_is_sanitized():
+    error = RuntimeError("connection failed for postgresql://user:secret@host/db")
+    error.sqlstate = "08006"
     with (
         patch("app.services.health.connection_checker.settings.NEON_DB_URL", "postgresql://test"),
-        patch("app.services.health.connection_checker.ConnectionPool", side_effect=Exception("conn refused")),
+        patch("app.services.health.connection_checker.psycopg.connect", side_effect=error),
+        patch("app.services.health.connection_checker.logfire.warning") as warning,
     ):
         result = _check_neon_postgres()
     assert result.healthy is False
     assert result.required is False
-    assert "Exception" in result.message
+    assert result.message == "RuntimeError (SQLSTATE 08006)"
+    assert "secret" not in result.message
+    assert "postgresql://" not in warning.call_args.args[0]
+
+
+def test_check_neon_postgres_failure_without_sqlstate_reports_exception_type():
+    with (
+        patch("app.services.health.connection_checker.settings.NEON_DB_URL", "postgresql://test"),
+        patch("app.services.health.connection_checker.psycopg.connect", side_effect=TimeoutError("timed out")),
+    ):
+        result = _check_neon_postgres()
+    assert result.healthy is False
+    assert result.message == "TimeoutError"
 
 
 def test_check_neon_postgres_unconfigured_uses_memory_saver():
@@ -199,3 +218,35 @@ def test_check_all_connections_returns_all_results():
     assert len(results) == 6
     assert results["postgres"].healthy is True
     assert results["jina_reranker"].healthy is False
+
+
+def test_check_logfire_reports_successful_export():
+    with (
+        patch("app.services.health.connection_checker.settings.LOGFIRE_TOKEN", "test-token"),
+        patch(
+            "app.services.health.connection_checker.probe_logfire_authentication",
+            return_value=(True, "Logfire token authenticated by API"),
+        ) as probe,
+    ):
+        from app.services.health.connection_checker import _check_logfire
+
+        result = _check_logfire()
+    assert result.healthy is True
+    assert "authenticated" in result.message
+    probe.assert_called_once()
+
+
+def test_check_logfire_does_not_treat_configured_token_as_authenticated():
+    with (
+        patch("app.services.health.connection_checker.settings.LOGFIRE_TOKEN", "test-token"),
+        patch(
+            "app.services.health.connection_checker.probe_logfire_authentication",
+            return_value=(False, "Logfire rejected or could not validate the configured token (HTTP 401)"),
+        ),
+    ):
+        from app.services.health.connection_checker import _check_logfire
+
+        result = _check_logfire()
+    assert result.healthy is False
+    assert result.required is False
+    assert "HTTP 401" in result.message

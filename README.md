@@ -104,9 +104,11 @@ The API's `--no-dev` install intentionally excludes RAGAS; the Gemini RAGAS judg
 development/evaluation dependency set and is not part of the serving request path.
 `NEON_DB_URL`, both `UPSTASH_REDIS_REST_*` values, `LOGFIRE_TOKEN`/`LOGFIRE_BASE_URL`, and
 `LANGSMITH_API_KEY` are optional integrations. Neon enables persistent LangGraph checkpoints;
-without it conversation checkpoints are in memory and disappear on restart. Qdrant and provider
-credentials must refer to existing external services. Do not enter credentials in source files or
-logs.
+if Neon is unavailable or checkpointer setup fails, `/ready` reports the active `MemorySaver` as
+non-durable and conversation checkpoints disappear on restart. Logfire readiness verifies token
+authentication through its region-aware `/v1/info` endpoint rather than treating token presence
+as proof. Qdrant and provider credentials must refer to existing external services. Do not enter
+credentials in source files or logs.
 
 If you deploy Streamlit as a separate Render web service, set its `BACKEND_URL` to the API's full
 HTTPS origin (for example, `https://<api-service>.onrender.com`) and set the same `RAG_API_KEY`.
