@@ -19,10 +19,14 @@ import logfire
 # Allow running from repo root without package installation.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dotenv import load_dotenv
+from app.config import settings
 
-load_dotenv()
-logfire.configure(token=os.getenv("LOGFIRE_TOKEN"), service_name="evals")
+logfire.configure(
+    token=settings.LOGFIRE_TOKEN,
+    service_name="evals",
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
+)
 
 from evals.guardrails_eval import compute_guardrails_metrics, run_guardrails_eval
 from evals.pipeline import load_golden_dataset, run_pipeline

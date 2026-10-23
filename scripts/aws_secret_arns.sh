@@ -7,7 +7,6 @@ export QDRANT_URL_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/
 export QDRANT_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/qdrant-api-key-am0tQF"
 export OPENAI_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/openai-api-key-cyazcm"
 export JINA_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/jina-api-key-8wtVDP"
-export PORTKEY_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/portkey-api-key-7ruL6n"
 export RAG_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/rag-api-key-UbqCdI"
 export LOGFIRE_TOKEN_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/logfire-token-SeWPCv"
 export LANGSMITH_API_KEY_ARN="arn:aws:secretsmanager:us-east-1:685057748560:secret:rag/langsmith-api-key-Hqsw7M"

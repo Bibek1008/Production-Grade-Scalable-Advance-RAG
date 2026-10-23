@@ -29,8 +29,13 @@ def _search_enterprise_knowledge(query: str, limit: int = 8):
 
     results = []
     for res in response.points:
+        payload = res.payload or {}
         results.append(
-            {"content": res.payload.get("text", ""), "source": res.payload.get("source", "Unknown"), "score": res.score}
+            {
+                "content": payload.get("text", ""),
+                "source": payload.get("source", "Unknown"),
+                "score": res.score,
+            }
         )
 
     return results
@@ -39,11 +44,20 @@ def _search_enterprise_knowledge(query: str, limit: int = 8):
 def search_enterprise_knowledge(query: str, limit: int = 8):
     """
     Performs a high-precision search in the enterprise knowledge base.
-    Uses the modern query_points interface. Retries transient failures
-    and gracefully degrades to an empty result set on persistent failure.
+    Uses the modern query_points interface and retries transient failures.
     """
     try:
+        collection_exists = client.collection_exists(settings.QDRANT_COLLECTION)
+    except Exception as error:
+        logfire.error(f"Qdrant collection check failed: {type(error).__name__}")
+        raise RuntimeError("Could not verify the configured Qdrant collection.") from error
+    if not collection_exists:
+        raise RuntimeError(
+            f"Qdrant collection '{settings.QDRANT_COLLECTION}' does not exist. Ingest documents before querying."
+        )
+
+    try:
         return _search_enterprise_knowledge(query, limit=limit)
-    except Exception as e:
-        logfire.error(f"❌ Qdrant Search Failed after retries: {e}")
-        return []
+    except Exception as error:
+        logfire.error(f"Qdrant search failed after retries: {type(error).__name__}")
+        raise RuntimeError("Knowledge-base search failed. Check the embedding API and Qdrant connection.") from error

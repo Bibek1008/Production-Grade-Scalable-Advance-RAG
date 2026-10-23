@@ -1,18 +1,18 @@
 """
 Phase 2 — RAGAS + Tool Correctness metrics.
-Uses a dedicated OpenAI judge key so production OPENAI_API_KEY is never exhausted by eval runs.
+Uses Gemini as the RAGAS judge. Evaluation embeddings use the application's
+configured Jina/local provider so vectors remain consistent with retrieval.
 All LLM-based metrics run one sample at a time with short cooldowns between sub-batches
 and experiments as a conservative rate-limit buffer.
 Contexts are truncated to 300 chars (2 chunks max) so no single request exceeds the limit.
 """
 
 import asyncio
-import os
 
 import logfire
 import pandas as pd
 from openai import AsyncOpenAI
-from ragas.embeddings import HuggingFaceEmbeddings
+from ragas.embeddings import BaseRagasEmbedding
 from ragas.llms import llm_factory
 from ragas.metrics.collections import (
     AnswerCorrectness,
@@ -22,8 +22,11 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
-OPENAI_BASE_URL = "https://api.openai.com/v1"
-JUDGE_MODEL = "gpt-5-mini"
+from app.config import settings
+from app.services.retrieval.embedding import embed_texts
+
+GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+JUDGE_TIMEOUT_SECONDS = 90
 COOLDOWN_STANDARD = 62
 COOLDOWN_MINI = 40  # between individual samples — conservative rate-limit buffer
 GENERAL_BATCH_SIZE = 1  # one sample at a time: abatch_score fires calls concurrently per sample,
@@ -32,15 +35,37 @@ CONTEXT_TRUNCATE = 300  # chars per context chunk — reduces single request tok
 CONTEXT_LIMIT = 2  # number of context chunks passed to RAGAS per sample
 
 
+class _ConfiguredEvaluationEmbeddings(BaseRagasEmbedding):
+    """Adapt the configured retrieval embedding provider to RAGAS."""
+
+    def embed_text(self, text: str, **kwargs) -> list[float]:
+        return embed_texts([text])[0]
+
+    async def aembed_text(self, text: str, **kwargs) -> list[float]:
+        vectors = await asyncio.to_thread(embed_texts, [text])
+        return vectors[0]
+
+
 def _build_judge():
-    api_key = os.getenv("JUDGE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-    client = AsyncOpenAI(api_key=api_key, base_url=OPENAI_BASE_URL)
-    llm = llm_factory(JUDGE_MODEL, provider="openai", client=client)
-    embeddings = HuggingFaceEmbeddings(
-        model="sentence-transformers/all-MiniLM-L6-v2",
-        use_api=False,
+    if settings.JUDGE_PROVIDER.strip().lower() != "gemini":
+        raise ValueError("JUDGE_PROVIDER must be 'gemini'; OpenAI evaluation is not supported.")
+    if not settings.judge_gemini_api_key:
+        raise RuntimeError("Gemini RAGAS judge is not configured; set JUDGE_GEMINI_API_KEY or GEMINI_API_KEY.")
+    client = AsyncOpenAI(
+        api_key=settings.judge_gemini_api_key,
+        base_url=GEMINI_OPENAI_BASE_URL,
+        timeout=JUDGE_TIMEOUT_SECONDS,
+        max_retries=1,
     )
-    return llm, embeddings
+    # RAGAS's Instructor adapter talks to Gemini through its OpenAI-compatible API.
+    llm = llm_factory(
+        settings.JUDGE_GEMINI_MODEL,
+        provider="openai",
+        client=client,
+        adapter="instructor",
+        temperature=0,
+    )
+    return llm, _ConfiguredEvaluationEmbeddings()
 
 
 async def _cooldown(seconds: int, label: str, status_cb=None):

@@ -1,4 +1,4 @@
-# Enterprise Agentic RAG: LangGraph · Guardrails · LLM Gateway · RAGAS Evals
+# Enterprise Agentic RAG: LangGraph · Portkey/Gemini · Guardrails · RAGAS Evals
 
 ```mermaid
 graph LR
@@ -33,12 +33,10 @@ graph LR
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
     end
 
-    %% ── LLM Gateway ──────────────────────────────────────────────────────────
-    subgraph GATEWAY ["🌐  LLM Gateway"]
+    %% ── Generation Gateway ───────────────────────────────────────────────────
+    subgraph PORTKEY ["🌐  Portkey Gateway"]
         direction TB
-        PK["🔀 Portkey\nUnified Gateway"]
-        G1["🤖 OpenAI Primary\ngpt-5-mini · via Portkey"]
-        G2["🤖 Anthropic Fallback\nclaude-haiku-4-5 · via Portkey"]
+        GM["🤖 Gemini primary + configured fallback\nPortkey saved config"]
     end
 
     %% ── Ingestion ────────────────────────────────────────────────────────────
@@ -62,7 +60,7 @@ graph LR
         GD[("📋 Golden Dataset\n15 Samples · 6 Guardrail Tests")]
         RAGAS["RAGAS Metrics\nFaithfulness · Relevancy\nPrecision · Recall · Correctness"]
         TC["Tool Correctness\nJaccard · Zero LLM"]
-        JUDGE["⚖️ Judge LLM\nOpenAI · JUDGE_OPENAI_API_KEY"]
+        JUDGE["⚖️ Judge LLM\nGemini · JUDGE_GEMINI_MODEL"]
     end
 
     %% ── Main Query Flow ──────────────────────────────────────────────────────
@@ -75,10 +73,9 @@ graph LR
     RT --> QD
     QD --> FR
     FR --> RS
-    RS --> PK
-    PL --> PK
-    PK --> G1
-    PK -.->|fallback| G2
+    RS --> GM
+    PL --> GM
+    GR --> GM
     RS -.-> MEM
     MEM -.-> PL
 
@@ -112,7 +109,7 @@ graph LR
     class API,GR safety
     class PL,RT,RS agent
     class QD,FR retrieval
-    class PK,G1,G2 gateway
+    class GM gateway
     class LOADER,PARSED,EMB ingest
     class LF,LS obs
     class GD,RAGAS,TC,JUDGE evals
@@ -150,9 +147,7 @@ graph TB
         direction LR
         QD[("🗄️ Qdrant Cloud\nVector DB")]
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
-        PK["🔀 Portkey Gateway\nRouting + Fallback"]
-        G1["🤖 OpenAI Primary\ngpt-5-mini · via Portkey"]
-        G2["🤖 Anthropic Fallback\nclaude-haiku-4-5 · via Portkey"]
+        GM["🤖 Portkey Gateway\nGemini primary + saved fallback config"]
     end
 
     subgraph INGEST ["5. Data Ingestion"]
@@ -167,7 +162,7 @@ graph TB
         GD[("📋 Golden Dataset\n15 RAG Samples · 6 Guardrail Tests")]
         RAGAS["RAGAS Metrics\nFaithfulness · Relevancy · Precision\nRecall · Correctness"]
         TC["Tool Correctness\nJaccard · Zero LLM Cost"]
-        JG["⚖️ Judge LLM\nOpenAI · Separate Key"]
+        JG["⚖️ Judge LLM\nGemini · optional separate key"]
     end
 
     subgraph OBS ["7. Monitoring & Observability"]
@@ -187,10 +182,9 @@ graph TB
     RT --> QD
     QD --> FR
     FR --> RS
-    RS --> PK
-    PL --> PK
-    PK --> G1
-    PK -.->|"fallback"| G2
+    RS --> GM
+    PL --> GM
+    GR --> GM
     RS -.-> MEM
     MEM -.-> PL
 
@@ -221,7 +215,7 @@ graph TB
     class CHAT,EAPP ui
     class API,GR safety
     class PL,RT,RS agent
-    class QD,FR,PK,G1,G2 knowledge
+    class QD,FR,GM knowledge
     class LOAD,PROC,EMB ingest
     class GD,RAGAS,TC,JG evals
     class LF,LS obs
@@ -238,7 +232,7 @@ graph TB
     B["⚡ 2. FastAPI + 🛡️ NeMo Guardrails"]
     C["🧠 3. LangGraph Agent\nPlanner → Retriever → Responder"]
     D["🗄️ 4. Qdrant Cloud\n+ Jina AI Reranker"]
-    E["🌐 5. Portkey Gateway\nOpenAI gpt-5-mini · Anthropic Fallback"]
+    E["🌐 5. Portkey Gateway\nGemini primary + saved fallback config"]
     F["📥 6. Data Ingestion\nLocal Parsers · Jina Embeddings · processed_data/"]
     G["🧪 7. RAGAS Evals\nFaithfulness · Precision · Recall · Correctness"]
     H["📡 8. Monitoring\nLogfire · LangSmith"]

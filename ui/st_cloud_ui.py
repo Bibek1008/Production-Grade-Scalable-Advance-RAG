@@ -1,18 +1,20 @@
-import os
-import streamlit as st
-import requests
 import time
 import uuid
-import logfire
 
+import logfire
+import requests
+import streamlit as st
+
+from app.config import settings
 
 # Initialize Logfire
-try:
-    logfire.configure(token=st.secrets.get("LOGFIRE_TOKEN", os.getenv("LOGFIRE_TOKEN")))
-    logfire.instrument_requests()   # propagates trace context to the FastAPI backend
-    LOGFIRE_STATUS = "Connected & Tracing"
-except Exception:
-    LOGFIRE_STATUS = "Standby (No Token)"
+logfire.configure(
+    token=settings.LOGFIRE_TOKEN,
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
+)
+logfire.instrument_requests()
+LOGFIRE_STATUS = "Configured" if settings.LOGFIRE_TOKEN else "Local only (LOGFIRE_TOKEN not set)"
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -38,12 +40,12 @@ with st.sidebar:
     st.title("🧠 Agent OS")
     st.markdown("---")
 
-    base_url = "http://localhost:8000"
+    base_url = settings.backend_url
 
     st.markdown("---")
     st.success(f"Logfire: {LOGFIRE_STATUS}")
     st.info(f"Memory ID: {st.session_state.session_id[:8]}")
-    
+
     if st.button("🗑️ Clear History & Memory", width="stretch", type="primary"):
         logfire.warning(f"🗑️ Memory Wipe Triggered for session: {st.session_state.session_id}")
         st.session_state.messages = []
@@ -63,7 +65,6 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("Ask about your documentation..."):
     # START TRACE: User Interaction
     with logfire.span("💬 User Chat Interaction", user_query=prompt, session_id=st.session_state.session_id):
-        
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(prompt)
@@ -76,7 +77,10 @@ if prompt := st.chat_input("Ask about your documentation..."):
                     with logfire.span("📡 Calling RAG Backend"):
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
-                        response = requests.post(url, json=payload, timeout=60)
+                        headers = {}
+                        if settings.API_KEY:
+                            headers["Authorization"] = f"Bearer {settings.API_KEY}"
+                        response = requests.post(url, json=payload, headers=headers, timeout=300)
 
                         if response.status_code != 200:
                             st.error(f"Backend Error: {response.status_code} - {response.text}")
@@ -112,8 +116,18 @@ if prompt := st.chat_input("Ask about your documentation..."):
             if sources:
                 with st.expander(f"📄 Retrieved Context ({len(sources)} chunks)"):
                     for i, source in enumerate(sources):
-                        st.caption(f"Chunk {i + 1}")
-                        st.info(source)
+                        if isinstance(source, dict):
+                            content = source.get("content", "")
+                            source_name = source.get("source", "Unknown source")
+                            score = source.get("score")
+                        else:
+                            content = source
+                            source_name = "Retrieved context"
+                            score = None
+                        st.caption(f"Chunk {i + 1}: {source_name}")
+                        if score is not None:
+                            st.caption(f"Relevance score: {score:.3f}")
+                        st.info(content)
             else:
                 st.caption("ℹ️ No context retrieved — conversational response.")
 

@@ -43,17 +43,19 @@ def create_checkpointer() -> BaseCheckpointSaver:
         try:
             with PostgresSaver.from_conn_string(settings.postgres_uri) as setup_saver:
                 setup_saver.setup()
-        except Exception as e:
-            logfire.warning(f"⚠️ Postgres checkpointer setup failed ({e}); falling back to MemorySaver.")
+        except Exception as error:
+            logfire.warning(
+                f"⚠️ Postgres checkpointer setup failed ({type(error).__name__}); falling back to MemorySaver."
+            )
             pool.close()
             return MemorySaver()
 
         checkpointer = PostgresSaver(pool)
         logfire.info("🗄️ Postgres checkpointer configured.")
         return checkpointer
-    except Exception as e:
+    except Exception as error:
         logfire.warning(
-            f"⚠️ Postgres checkpointer unavailable ({e}); falling back to MemorySaver. "
+            f"⚠️ Postgres checkpointer unavailable ({type(error).__name__}); falling back to MemorySaver. "
             "Do not use MemorySaver in production — state is lost on restart."
         )
         return MemorySaver()

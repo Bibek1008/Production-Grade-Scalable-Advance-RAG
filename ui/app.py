@@ -1,37 +1,29 @@
 import os
 import time
 import uuid
+from pathlib import Path
 
 import logfire
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 
-# Load environment variables explicitly from the root directory
-env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
-load_dotenv(dotenv_path=env_path)
-
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
+LOGFIRE_BASE_URL = os.getenv("LOGFIRE_BASE_URL")
+BACKEND_URL = os.getenv("BACKEND_URL", "").strip().rstrip("/") or "http://localhost:8000"
+RAG_API_KEY = os.getenv("RAG_API_KEY")
 
 # Initialize Logfire
-LOGFIRE_STATUS = "Unknown"
-try:
-    token = os.getenv("LOGFIRE_TOKEN")
-    base_url = os.getenv("LOGFIRE_BASE_URL")
-    # EU Logfire v2 tokens must hit the EU endpoint.
-    if not base_url and token and token.startswith("pylf_v2_eu_"):
-        base_url = "https://logfire-eu.pydantic.dev"
-    if not token:
-        print("ERROR: LOGFIRE_TOKEN is empty or None!")
-        LOGFIRE_STATUS = "Standby (LOGFIRE_TOKEN not set)"
-    else:
-        logfire.configure(
-            token=token,
-            advanced=logfire.AdvancedOptions(base_url=base_url) if base_url else None,
-        )
-        LOGFIRE_STATUS = "Connected & Tracing"
-except Exception as e:
-    print(f"Logfire Init Error in UI: {e}")
-    LOGFIRE_STATUS = f"Standby (Error: {e})"
+_logfire_base_url = LOGFIRE_BASE_URL
+if not _logfire_base_url and LOGFIRE_TOKEN and LOGFIRE_TOKEN.startswith("pylf_v2_eu_"):
+    _logfire_base_url = "https://logfire-eu.pydantic.dev"
+logfire.configure(
+    token=LOGFIRE_TOKEN,
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=_logfire_base_url) if _logfire_base_url else None,
+)
+LOGFIRE_STATUS = "Configured" if LOGFIRE_TOKEN else "Local only (LOGFIRE_TOKEN not set)"
 
 
 # --- PAGE CONFIG ---
@@ -92,16 +84,20 @@ if prompt := st.chat_input("Ask about your documentation..."):
                 try:
                     # DISTRIBUTED TRACE: Calling Backend
                     with logfire.span("📡 Calling RAG Backend"):
-                        base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+                        base_url = BACKEND_URL
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
                         headers = {
                             "Content-Type": "application/json",
                             "Authorization": f"Bearer {os.getenv('RAG_API_KEY', '')}",
                         }
+                        headers.pop("Authorization", None)
+                        if RAG_API_KEY:
+                            headers["Authorization"] = f"Bearer {RAG_API_KEY}"
                         # First guardrails invocation can be slow as NeMo downloads
                         # configs/models; allow up to 3 minutes.
-                        response = requests.post(url, json=payload, headers=headers, timeout=180)
+                        response = requests.post(url, json=payload, headers=headers, timeout=300)
+                        response.raise_for_status()
                         data = response.json()
 
                     # Guardrails can block synchronously.
@@ -150,9 +146,20 @@ if prompt := st.chat_input("Ask about your documentation..."):
                     if sources:
                         with st.expander("📄 View Retrieved Context (Sources)"):
                             for i, source in enumerate(sources):
-                                preview = source[:100].replace("\n", " ") + "..."
-                                with st.expander(f"Chunk {i + 1}: {preview}"):
-                                    st.info(source)
+                                if isinstance(source, dict):
+                                    content = source.get("content", "")
+                                    source_name = source.get("source", "Unknown source")
+                                    score = source.get("score")
+                                else:
+                                    content = source
+                                    source_name = "Retrieved context"
+                                    score = None
+                                preview = content[:100].replace("\n", " ") + "..."
+                                label = f"Chunk {i + 1}: {source_name} — {preview}"
+                                with st.expander(label):
+                                    if score is not None:
+                                        st.caption(f"Relevance score: {score:.3f}")
+                                    st.info(content)
                 except Exception as e:
                     logfire.error(f"❌ UI-Backend Connection Failed: {e}")
                     status.update(label="❌ Connection Failed", state="error")

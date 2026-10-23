@@ -18,13 +18,13 @@ def health():
 @router.get("/ready")
 def ready(request: Request):
     """
-    Readiness probe — verifies that critical external dependencies are reachable.
-    Returns 200 only if Postgres, Redis, Qdrant, the LLM gateway, Jina Embeddings,
-    and Jina Reranker are all healthy.
+    Readiness probe — verifies that critical runtime dependencies are reachable.
+    Optional persistence, rate limiting, tracing, and reranking failures are reported
+    but do not make the API unready.
     """
     results = check_all_connections()
     checks = {name: result.to_dict()["status"] for name, result in results.items()}
-    healthy = all(r.healthy for r in results.values())
+    healthy = all(r.healthy for r in results.values() if r.required)
 
     if not healthy:
         logfire.warning("Readiness check failed", checks=checks)

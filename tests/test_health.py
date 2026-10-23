@@ -28,7 +28,7 @@ def test_ready_when_all_dependencies_healthy():
         "postgres": _ok("postgres"),
         "redis": _ok("redis"),
         "qdrant": _ok("qdrant"),
-        "llm_gateway": _ok("llm_gateway"),
+        "gemini": _ok("gemini"),
         "jina_embeddings": _ok("jina_embeddings"),
         "jina_reranker": _ok("jina_reranker"),
     }
@@ -47,7 +47,7 @@ def test_ready_returns_503_when_any_dependency_fails():
         "postgres": _ok("postgres"),
         "redis": _ok("redis"),
         "qdrant": _fail("qdrant", "qdrant down"),
-        "llm_gateway": _ok("llm_gateway"),
+        "gemini": _ok("gemini"),
         "jina_embeddings": _ok("jina_embeddings"),
         "jina_reranker": _ok("jina_reranker"),
     }
@@ -59,3 +59,17 @@ def test_ready_returns_503_when_any_dependency_fails():
     data = response.json()
     assert data["status"] == "not_ready"
     assert data["checks"]["qdrant"].startswith("unavailable")
+
+
+def test_ready_ignores_unavailable_optional_services():
+    results = {
+        "qdrant": _ok("qdrant"),
+        "gemini": _ok("gemini"),
+        "redis": ConnectionResult("redis", False, "not configured", required=False),
+        "postgres": ConnectionResult("postgres", False, "not configured", required=False),
+    }
+    with patch("app.health.check_all_connections", return_value=results):
+        response = TestClient(app).get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"

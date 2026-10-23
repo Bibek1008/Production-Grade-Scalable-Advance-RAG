@@ -6,13 +6,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logfire
 
-logfire.configure(token=os.getenv("LOGFIRE_TOKEN"), service_name="evals")
+from app.config import settings
+
+logfire.configure(
+    token=settings.LOGFIRE_TOKEN,
+    service_name="evals",
+    send_to_logfire="if-token-present",
+    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 import asyncio
@@ -173,7 +176,7 @@ with tab1:
 with tab2:
     st.subheader("Live Pipeline — Collect Real Responses")
     st.markdown(
-        "Sends each golden question to your **running FastAPI app** (`localhost:8000/query`). "
+        f"Sends each golden question to your **running FastAPI app** (`{settings.backend_url}/query`). "
         "Captures the actual response, retrieved contexts, and tool called. "
         "Responses are truncated to 300 chars to save tokens for the RAGAS judging step."
     )
@@ -343,13 +346,13 @@ with tab3:
     else:
         st.markdown(
             "Runs all **6 metric experiments** on the stored responses. "
-            "LLM-based metrics use `JUDGE_OPENAI_API_KEY` — samples are scored one at a time "
-            "with 40s cooldowns between samples as a conservative rate-limit buffer. "
+            "LLM-based metrics use the configured Gemini judge — samples are scored one at a time "
+            "with cooldowns between samples as a conservative rate-limit buffer. "
             "Total runtime: ~50 min."
         )
         st.info(
-            "Token key used: `JUDGE_OPENAI_API_KEY` (separate from production key). "
-            "Each sample is processed individually to stay within OpenAI rate limits.",
+            "The judge uses `JUDGE_GEMINI_API_KEY` (or `GEMINI_API_KEY` when unset) and "
+            "`JUDGE_GEMINI_MODEL`; it does not require an OpenAI key.",
             icon="ℹ️",
         )
 
