@@ -5,12 +5,9 @@
 import logfire
 
 from app.config import settings
+from app.observability import configure_logfire
 
-logfire.configure(
-    token=settings.LOGFIRE_TOKEN,
-    send_to_logfire="if-token-present",
-    advanced=logfire.AdvancedOptions(base_url=settings.logfire_base_url) if settings.logfire_base_url else None,
-)
+configure_logfire()
 
 # Now safe to import app modules - logfire is already active
 import time
@@ -24,7 +21,7 @@ from prometheus_client import Counter, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
-from app.agents.graph import build_graph
+from app.agents.graph import build_graph, close_checkpointer
 from app.guardrails import guard, initialize_rails
 from app.health import router as health_router
 from app.logging import set_request_id
@@ -180,6 +177,15 @@ def startup_event():
 
     if not settings.API_KEY:
         logfire.warning("🔓 RAG_API_KEY is not set — /query is open to anyone. Set it in production.")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Close the long-lived PostgreSQL pool when the API process exits."""
+    rag_agent = getattr(app.state, "rag_agent", None)
+    checkpointer = getattr(rag_agent, "checkpointer", None)
+    if checkpointer is not None:
+        close_checkpointer(checkpointer)
 
 
 class QueryRequest(BaseModel):

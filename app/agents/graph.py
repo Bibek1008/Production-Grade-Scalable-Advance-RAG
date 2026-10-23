@@ -8,57 +8,70 @@ from app.agents.nodes.responder import generate_node
 from app.agents.nodes.retriever import retrieve_node
 from app.agents.state import AgentState
 from app.config import settings
+from app.postgres import postgres_error_summary
 
 
 def create_checkpointer() -> BaseCheckpointSaver:
     """
-    Create a durable Postgres checkpointer for production.
-    Falls back to in-memory MemorySaver only if Postgres is unreachable.
+    Create a Postgres checkpointer when available.
+    Falls back to non-durable in-memory MemorySaver when Postgres setup fails.
 
     Note: we run setup() through a single autocommit connection because
     LangGraph's migrations include CREATE INDEX CONCURRENTLY, which Neon
     rejects when run inside a transaction (the default ConnectionPool mode).
     """
+    pool = None
     try:
         from langgraph.checkpoint.postgres import PostgresSaver
         from psycopg_pool import ConnectionPool
 
         pool = ConnectionPool(
             conninfo=settings.postgres_uri,
-            max_size=20,
+            kwargs={"connect_timeout": 5},
+            min_size=1,
+            max_size=2,
             open=False,
             timeout=10,
-            num_workers=3,
+            num_workers=1,
             check=ConnectionPool.check_connection,
             max_idle=240,
         )
-        # Verify connectivity before committing to Postgres; otherwise the first
-        # graph invocation will hang on connection retries.
-        pool.open()
-        conn = pool.getconn()
-        pool.putconn(conn)
+        pool.open(wait=True, timeout=10)
 
         # Run migrations on a separate autocommit connection so that
         # CREATE INDEX CONCURRENTLY succeeds on Neon.
-        try:
-            with PostgresSaver.from_conn_string(settings.postgres_uri) as setup_saver:
-                setup_saver.setup()
-        except Exception as error:
-            logfire.warning(
-                f"⚠️ Postgres checkpointer setup failed ({type(error).__name__}); falling back to MemorySaver."
-            )
-            pool.close()
-            return MemorySaver()
+        with PostgresSaver.from_conn_string(settings.postgres_uri) as setup_saver:
+            setup_saver.setup()
 
         checkpointer = PostgresSaver(pool)
         logfire.info("🗄️ Postgres checkpointer configured.")
         return checkpointer
     except Exception as error:
+        if pool is not None:
+            try:
+                pool.close()
+            except Exception as close_error:
+                logfire.warning(f"Postgres pool cleanup failed: {postgres_error_summary(close_error)}")
         logfire.warning(
-            f"⚠️ Postgres checkpointer unavailable ({type(error).__name__}); falling back to MemorySaver. "
-            "Do not use MemorySaver in production — state is lost on restart."
+            f"Postgres checkpointer unavailable ({postgres_error_summary(error)}); using MemorySaver. "
+            "Checkpoint data is in memory and will be lost on restart."
         )
         return MemorySaver()
+
+
+def close_checkpointer(checkpointer: BaseCheckpointSaver) -> None:
+    """Close the connection pool owned by a PostgresSaver, if present."""
+    connection = getattr(checkpointer, "conn", None)
+    close = getattr(connection, "close", None)
+    if callable(close):
+        close()
+
+
+def is_postgres_checkpointer(checkpointer: BaseCheckpointSaver) -> bool:
+    """Return whether the active saver is a PostgreSQL-backed checkpointer."""
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    return isinstance(checkpointer, PostgresSaver)
 
 
 def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:

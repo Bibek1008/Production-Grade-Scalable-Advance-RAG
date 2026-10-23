@@ -12,13 +12,15 @@ import time
 from typing import Callable
 
 import logfire
+import psycopg
 import requests
-from psycopg_pool import ConnectionPool
 from qdrant_client import QdrantClient
 from redis import Redis
 
 from app.config import settings
 from app.gateway import get_portkey_llm
+from app.observability import probe_logfire_authentication
+from app.postgres import postgres_error_summary
 from app.services.retrieval.embedding import get_embedding_dim
 
 
@@ -55,36 +57,15 @@ def _check_neon_postgres() -> ConnectionResult:
     """Verify Neon Postgres is reachable and accepts queries."""
     if not settings.NEON_DB_URL:
         return ConnectionResult("postgres", False, "NEON_DB_URL not set; using in-memory checkpointing", False)
-    pool = None
-    conn = None
     try:
-        pool = ConnectionPool(
-            conninfo=settings.postgres_uri,
-            min_size=1,
-            max_size=2,
-            open=True,
-            timeout=5,
-            check=ConnectionPool.check_connection,
-        )
-        conn = pool.getconn(timeout=5)
-        with conn.transaction():
+        with psycopg.connect(settings.postgres_uri, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
         return ConnectionResult("postgres", True, "Neon Postgres reachable", False)
     except Exception as e:
-        logfire.warning(f"Postgres health check failed: {_failure_message(e)}")
-        return ConnectionResult("postgres", False, _failure_message(e), False)
-    finally:
-        if conn is not None and pool is not None:
-            try:
-                pool.putconn(conn)
-            except Exception:
-                pass
-        if pool is not None:
-            try:
-                pool.close(timeout=5)
-            except Exception:
-                pass
+        diagnostic = postgres_error_summary(e)
+        logfire.warning(f"Postgres health check failed: {diagnostic}")
+        return ConnectionResult("postgres", False, diagnostic, False)
 
 
 def _check_upstash_redis() -> ConnectionResult:
@@ -205,14 +186,11 @@ def _check_jina_reranker() -> ConnectionResult:
 
 
 def _check_logfire() -> ConnectionResult:
-    """Verify Logfire is configured with a token.
-
-    logfire.configure() already ran at process start; token presence confirms
-    the SDK is active. A missing token means all spans are silently dropped.
-    """
+    """Verify that Logfire accepts the configured token, not merely that it exists."""
     if not settings.LOGFIRE_TOKEN:
         return ConnectionResult("logfire", False, "LOGFIRE_TOKEN not set — spans dropped", False)
-    return ConnectionResult("logfire", True, "Logfire configured", False)
+    healthy, message = probe_logfire_authentication()
+    return ConnectionResult("logfire", healthy, message, False)
 
 
 def _check_langsmith() -> ConnectionResult:
