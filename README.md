@@ -80,3 +80,46 @@ This does not create infrastructure or write/delete Qdrant data. Calls may consu
 
 The live integration smoke test includes a minimal Gemini-backed RAGAS faithfulness score, a Portkey
 generation request, Qdrant retrieval, and read-only Neon/Upstash checks. These provider calls may consume quota.
+
+## Render free-tier experiment
+
+The root `render.yaml` defines the FastAPI service only. Use this branch's Blueprint when creating
+the experiment; it does not configure or invoke the AWS deployment workflow. Render uses Python
+3.12 from `.python-version` and installs the locked production dependencies with `uv sync --locked
+--no-dev`. The start command binds Uvicorn to `0.0.0.0` and Render's runtime-provided `$PORT`.
+
+Set the `sync: false` variables in the Render dashboard; do not put credentials in this repository.
+Required API values are `GEMINI_API_KEY`, all four `PORTKEY_*` values, `JINA_API_KEY`, and
+`QDRANT_URL` for the existing collection. Set `QDRANT_API_KEY` if that Qdrant cluster requires
+authentication. Keep
+`QDRANT_COLLECTION=enterprise_rag` unless the intended existing collection has another name. The
+collection must already contain 1024-dimensional Jina vectors; deployment does not create, reset,
+or migrate it. `JINA_API_KEY` is especially important on this small instance: without it, the
+application selects its local mxbai embedding fallback, which loads sentence-transformers/PyTorch
+when a query first needs an embedding.
+
+Set `RAG_API_KEY` to protect the API. Add `JUDGE_GEMINI_API_KEY` only if the RAGAS evaluation
+scripts are run with a separate judge credential; otherwise the judge uses `GEMINI_API_KEY`.
+The API's `--no-dev` install intentionally excludes RAGAS; the Gemini RAGAS judge remains in the
+development/evaluation dependency set and is not part of the serving request path.
+`NEON_DB_URL`, both `UPSTASH_REDIS_REST_*` values, `LOGFIRE_TOKEN`/`LOGFIRE_BASE_URL`, and
+`LANGSMITH_API_KEY` are optional integrations. Neon enables persistent LangGraph checkpoints;
+without it conversation checkpoints are in memory and disappear on restart. Qdrant and provider
+credentials must refer to existing external services. Do not enter credentials in source files or
+logs.
+
+If you deploy Streamlit as a separate Render web service, set its `BACKEND_URL` to the API's full
+HTTPS origin (for example, `https://<api-service>.onrender.com`) and set the same `RAG_API_KEY`.
+The UI already reads `BACKEND_URL` and sends it to `/query`; do not use `localhost` for a remote
+backend. Bind Streamlit to `0.0.0.0` and its runtime `$PORT`.
+
+This is a constrained experiment, not a verified free-tier deployment. Render Free provides
+512 MB RAM and 0.1 CPU and spins idle services down; NeMo Guardrails is imported and initialized
+on every API start, while the project also retains sentence-transformers and PyTorch for its local
+fallback. Jina prevents the fallback model from being loaded during ordinary retrieval, but does
+not remove NeMo's startup footprint or the large dependency install. No Render instance has been
+deployed or memory-profiled from this branch, so the API must not be considered free-tier-ready
+until an actual deploy's peak memory and restart behavior are measured. If it exceeds 512 MB, the
+smallest safe compute change that increases RAM is Render's `1c-2g` plan (legacy Standard, 1 CPU /
+2 GB); the `0.5c-512mb` plan has the same memory limit. Keep NeMo and the local fallback unless a
+separate behavior change is approved and tested.

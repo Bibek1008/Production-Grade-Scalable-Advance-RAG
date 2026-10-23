@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: enterprise-rag-api
+    runtime: python
+    plan: free
+    buildCommand: uv sync --locked --no-dev
+    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
+      - key: PORTKEY_API_KEY
+        sync: false
+      - key: PORTKEY_PRIMARY_SLUG
+        sync: false
+      - key: PORTKEY_FALLBACK_SLUG
+        sync: false
+      - key: PORTKEY_PRIMARY_CONFIG_ID
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: enterprise_rag
+      - key: JUDGE_PROVIDER
+        value: gemini
+      - key: JUDGE_GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: JUDGE_GEMINI_API_KEY
+        sync: false
+      - key: RAG_API_KEY
+        sync: false
+      - key: NEON_DB_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: LOGFIRE_TOKEN
+        sync: false
+      - key: LOGFIRE_BASE_URL
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_PROJECT
+        value: rag_scale_test
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: STRICT_STARTUP
+        value: "false"
