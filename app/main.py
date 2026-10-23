@@ -64,19 +64,25 @@ def _init_rate_limiter():
     from slowapi.extension import _rate_limit_exceeded_handler
     from slowapi.util import get_remote_address
 
-    try:
-        storage = RedisStorage(settings.redis_url)
-        # `storage.check()` returns False silently on some failures; ping the
-        # underlying Redis client so we only use Redis when it is really reachable.
-        if not storage.check() or not storage.storage.ping():
-            raise ConnectionError("Redis did not respond to ping")
-        app.state.limiter = Limiter(key_func=get_remote_address, storage_uri=settings.redis_url)
-        app.state.rate_limiter_storage = "redis"
-        logfire.info("🚦 Rate limiting initialized via Redis.")
-    except Exception as e:
+    redis_url = settings.redis_url
+    if not redis_url:
         app.state.limiter = Limiter(key_func=get_remote_address)
         app.state.rate_limiter_storage = "memory"
-        logfire.warning(f"⚠️ Redis unavailable ({e}); using in-memory rate limiting.")
+        logfire.info("🚦 Upstash not configured; using in-memory rate limiting.")
+    else:
+        try:
+            storage = RedisStorage(redis_url)
+            # `storage.check()` returns False silently on some failures; ping the
+            # underlying Redis client so we only use Redis when it is really reachable.
+            if not storage.check() or not storage.storage.ping():
+                raise ConnectionError("Redis did not respond to ping")
+            app.state.limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
+            app.state.rate_limiter_storage = "redis"
+            logfire.info("🚦 Rate limiting initialized via Redis.")
+        except Exception as e:
+            app.state.limiter = Limiter(key_func=get_remote_address)
+            app.state.rate_limiter_storage = "memory"
+            logfire.warning(f"⚠️ Redis unavailable ({type(e).__name__}); using in-memory rate limiting.")
 
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     return True
@@ -173,10 +179,10 @@ def startup_event():
     app.state.rate_limiter_enabled = _init_rate_limiter()
 
     # Verify all external dependencies are reachable.
-    connection_results = check_all_connections()
+    connection_results = check_all_connections(refresh=True)
     all_healthy = log_connection_summary(connection_results)
     if settings.STRICT_STARTUP and not all_healthy:
-        failed = [name for name, r in connection_results.items() if not r.healthy]
+        failed = [name for name, result in connection_results.items() if result.required and not result.healthy]
         raise RuntimeError(f"STRICT_STARTUP enabled; failing services: {', '.join(failed)}")
 
     if not settings.API_KEY:

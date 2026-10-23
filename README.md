@@ -1,195 +1,73 @@
-# Enterprise Agentic RAG (Scalable Pipeline)
+# Enterprise Agentic RAG
 
-A production-grade, enterprise-level RAG system built with **LangGraph**, **Portkey LLM Gateway**, **OpenAI**, and **Jina AI Embeddings/Reranker**. The system distinguishes between technical "True Data" and random "Noisy Data" using semantic re-ranking, history-aware planning, and NeMo Guardrails for input/output safety.
+Agentic retrieval-augmented generation built with LangGraph, Google Gemini, Qdrant, Jina AI, and NeMo Guardrails.
 
-## Key Features
+## Current runtime
 
-- **Agentic Intelligence**: LangGraph for cyclic reasoning, multi-step planning, and conversation memory.
-- **Guardrails**: NeMo Guardrails gate blocks off-topic, jailbreak, and injection inputs before any retrieval.
-- **LLM Gateway**: Portkey routes all LLM calls with automatic fallback between OpenAI and Anthropic via your configured Portkey virtual providers.
-- **Enterprise Search**: Qdrant Cloud for high-performance vector search + Jina AI Reranker API for semantic reranking.
-- **Jina AI Embeddings**: `jina-embeddings-v3` (1024-dim) via Jina API, with local `mxbai-embed-large-v1` fallback.
-- **Local Document Parsing**: PDF, HTML, TXT, DOCX, PPTX parsed entirely on-device — no external OCR service.
-- **Observability**: Full trace nesting with **Pydantic Logfire** and **LangSmith** across every agent node.
-- **Metrics**: Prometheus `/metrics` endpoint with custom RAG and guardrails counters.
-- **Synchronous `/query`**: The LangGraph pipeline runs directly inside the `/query` endpoint and returns the final answer.
-- **API Key & Rate Limiting**: Optional bearer-token auth and Redis-backed (or in-memory) rate limiting.
-- **Evaluation Suite**: RAGAS-powered eval pipeline (6 metrics) with a dedicated Streamlit demo app and a headless `evals/run_evals.py` script.
+- Planner, responder, and guardrails use Gemini through Google's OpenAI-compatible endpoint:
+  `https://generativelanguage.googleapis.com/v1beta/openai/`.
+- Default model: `gemini-flash-lite-latest`; override with `GEMINI_MODEL`.
+- Qdrant stores document vectors. Jina `jina-embeddings-v3` uses 1024-dimensional vectors.
+- If `JINA_API_KEY` is absent, embeddings use local `mixedbread-ai/mxbai-embed-large-v1` instead. Do not switch embedding providers for an existing collection: matching dimensions do not mean matching vector spaces.
+- Jina reranking, Neon conversation persistence, Upstash distributed rate limiting, Logfire, and LangSmith are optional.
+- Without Neon, LangGraph uses in-memory conversation state, which is lost on process restart. Without Upstash, rate limiting is process-local.
 
----
+## Windows PowerShell setup
 
-## Agent Intelligence Flow
-
-```mermaid
-graph TD
-    User((User)) --> UI[Streamlit UI]
-    UI --> API[FastAPI /query]
-    API --> Guard{NeMo Guardrails}
-    Guard -->|Blocked| UI
-    Guard -->|Pass| Planner{Planner Node}
-    Planner -->|Conversational| Responder[Responder Node]
-    Planner -->|Technical| Retriever[Retriever Node]
-    Retriever --> Reranker[Jina AI Reranker API]
-    Reranker --> Responder
-    Responder --> UI
-    Responder -.-> Memory[(LangGraph MemorySaver)]
-```
-
----
-
-## Project Structure
-
-```text
-├── app/
-│   ├── agents/
-│   │   └── nodes/       # Planner, Retriever, Responder LangGraph nodes
-│   ├── gateway/         # Portkey LLM gateway — primary + fallback Groq routing
-│   ├── guardrails/      # NeMo Guardrails input/output filtering
-│   ├── ingestion/
-│   │   ├── chunking/    # Paragraph-based text splitter (1500 char max)
-│   │   └── loaders/     # Local parsers — PDF (pypdf), HTML, TXT, DOCX, PPTX
-│   ├── services/
-│   │   └── retrieval/   # Jina AI embeddings + Qdrant search + Jina AI reranking
-│   ├── config.py        # Centralized environment variable management
-│   └── main.py          # FastAPI entrypoint — guardrails gate + /query endpoint
-├── evals/               # RAGAS evaluation suite + Streamlit 3-tab demo
-├── ui/                  # Streamlit chat interface with reasoning step transparency
-├── processed_data/      # Auto-generated — parsed & chunked JSON output per document
-├── DOCS/                # Architectural and operational guides
-├── DATA/                # Sample datasets (True vs Noisy documentation)
-├── Dockerfile           # Container definition (retained for reference)
-└── requirements.txt     # Pinned dependencies
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Orchestration | LangChain + LangGraph |
-| LLMs | OpenAI `gpt-5-mini` + Anthropic fallback via **Portkey** gateway |
-| Guardrails | NeMo Guardrails |
-| Vector DB | Qdrant Cloud |
-| Reranking | Jina AI Reranker API (`jina-reranker-v3`) |
-| Embeddings | Jina AI `jina-embeddings-v3` (1024-dim) + local mxbai fallback |
-| Document Parsing | pypdf + pdfplumber (local, no OCR service) |
-| Observability | Pydantic Logfire + LangSmith |
-| Evaluation | RAGAS + custom Tool Correctness (Jaccard) |
-
----
-
-## Getting Started
-
-### 1. Install dependencies
+Python 3.12 is recommended. Do not read or commit `.env`; copy the template and add your own credentials:
 
 ```powershell
-python -m venv tenvv
-.\tenvv\Scripts\activate
-pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+notepad .env
 ```
 
-### 2. Configure environment
+If PowerShell does not allow virtual-environment activation, do not change the machine execution policy. Invoke `.\.venv\Scripts\python.exe` directly instead.
 
-Create a `.env` file with the following keys:
+Set `GEMINI_API_KEY` and your Qdrant connection in `.env`. Configure `JINA_API_KEY` if you want Jina embeddings and reranking. Leave Neon and Upstash values empty for local in-memory operation.
 
-```env
-# OpenAI LLM
-OPENAI_API_KEY = "..."
+Docker Compose starts a local Qdrant service and routes the API container to it. To use a cloud Qdrant from Compose, set `DOCKER_QDRANT_URL` and `DOCKER_QDRANT_API_KEY` in `.env`; these override the local service route.
 
-# LLM Gateway
-PORTKEY_API_KEY = "..."
+**Windows Application Control note:** Some Windows policies block the native `uuid_utils` extension imported by LangChain. Do not disable or bypass Application Control. If Python reports that this module is blocked, use WSL for the Python environment and commands below.
 
-# Jina AI Embeddings + Reranker API
-JINA_API_KEY = "..."
+## Prepare Qdrant and run
 
-# Vector DB
-QDRANT_API_KEY = "..."
-QDRANT_CLUSTER_ENDPOINT = "https://your-cluster.cloud.qdrant.io:6333"
-
-# Production persistence (Neon) & cache (Upstash Redis)
-NEON_DB_URL = "postgresql://user:password@host.neon.tech/enterprise_rag?sslmode=require"
-UPSTASH_REDIS_REST_URL = "https://your-db.upstash.io"
-UPSTASH_REDIS_REST_TOKEN = "your-upstash-token"
-
-# API safety
-RAG_API_KEY = ""                       # set in production to require bearer auth
-RATE_LIMIT_PER_MINUTE = 20
-
-# Observability
-LOGFIRE_TOKEN = "..."
-LANGSMITH_API_KEY = "..."
-LANGSMITH_PROJECT = "enterprise_rag"
-LANGSMITH_TRACING = true
-LANGSMITH_ENDPOINT = https://api.smith.langchain.com
-
-# Evals
-JUDGE_OPENAI_API_KEY = "..."
-
-# Backend (for Streamlit UI)
-BACKEND_URL = "http://localhost:8000"
-```
-
-### 3. Run data ingestion
-
-Parses all documents in `DATA/`, chunks them, saves metadata to `processed_data/`, and indexes vectors into Qdrant.
+First ingest the documents you intend to query. This command does not delete the existing collection:
 
 ```powershell
-python -m app.ingestion.processor DATA --wipe
+.\.venv\Scripts\python.exe -m app.ingestion.processor DATA
 ```
 
-> Pass `--wipe` to drop and recreate the Qdrant collection. Omit it to append to an existing collection.
+Do **not** add `--wipe` unless you have deliberately decided to delete all existing vectors in that Qdrant collection. The ingestion command creates the collection when it is missing and appends indexed points. Keep the same embedding provider for both ingestion and query.
 
-### 4. Launch the app
-
-The `/query` endpoint runs the LangGraph pipeline synchronously. You only need the FastAPI server and (optionally) the Streamlit UI. Redis and Postgres are managed by Upstash and Neon; no local persistence services are required.
-
-> **Tip:** You can verify all external connections before starting the server:
-> ```bash
-> python -m app.services.health.connection_checker
-> ```
+Start the API and UI in separate PowerShell terminals:
 
 ```powershell
-# Terminal 1 — FastAPI backend
-uvicorn app.main:app --reload --port 8000
-
-# Terminal 2 — Streamlit UI
-streamlit run ui/app.py
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
-
-### 5. Query the API
 
 ```powershell
-curl -X POST "http://localhost:8000/query" `
-  -H "Content-Type: application/json" `
-  -d '{"q": "How do I start Redis for a Kubernetes work queue?", "thread_id": "user-1"}'
-
-# Response: {"question": "...", "answer": "...", "thought_process": [...], "status": "...", "sources": [...]}
+.\.venv\Scripts\python.exe -m streamlit run ui/app.py
 ```
 
-### 6. Run the eval suite
+Check liveness at `http://localhost:8000/health` and readiness at `http://localhost:8000/ready`. Readiness requires Gemini, Qdrant, and the configured Qdrant collection. Optional-service failures are reported but do not make the API unready. Readiness performs small Gemini/Jina probes and caches their results for 30 seconds.
+
+## Verify and test
+
+An explicit integration smoke test sends small, read-only requests to configured external services:
 
 ```powershell
-# Headless CLI runner (requires backend on :8000)
-python -m evals.run_evals
-
-# Or use the Streamlit demo
-streamlit run evals/app.py
+.\.venv\Scripts\python.exe scripts/smoke_test_integrations.py --live
 ```
 
-### 7. Run tests locally
+This does not create infrastructure or write/delete Qdrant data. Calls may consume provider quota.
 
 ```powershell
-# Lint + format checks
-ruff check app tests evals
-ruff format --check app tests evals
-
-# Unit tests
-$env:LOGFIRE_IGNORE_NO_CONFIG=1
-pytest tests/
+.\.venv\Scripts\ruff.exe check app tests evals
+.\.venv\Scripts\ruff.exe format --check app tests evals
+.\.venv\Scripts\python.exe -m pytest
 ```
 
----
-ok 
-
-*Built for High-Scale Enterprise Document Intelligence.*
+The OpenAI key is only used as an optional RAGAS evaluation judge; it is not needed for application inference.

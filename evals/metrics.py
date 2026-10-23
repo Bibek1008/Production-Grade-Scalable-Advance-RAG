@@ -1,6 +1,6 @@
 """
 Phase 2 — RAGAS + Tool Correctness metrics.
-Uses a dedicated OpenAI judge key so production OPENAI_API_KEY is never exhausted by eval runs.
+Uses a dedicated OpenAI judge key when set; the app's Gemini runtime does not require OpenAI credentials.
 All LLM-based metrics run one sample at a time with short cooldowns between sub-batches
 and experiments as a conservative rate-limit buffer.
 Contexts are truncated to 300 chars (2 chunks max) so no single request exceeds the limit.

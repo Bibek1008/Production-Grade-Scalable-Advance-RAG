@@ -348,7 +348,7 @@ with tab3:
             "Total runtime: ~50 min."
         )
         st.info(
-            "Token key used: `JUDGE_OPENAI_API_KEY` (separate from production key). "
+            "Token key used: `JUDGE_OPENAI_API_KEY` (optional; separate from the Gemini runtime key). "
             "Each sample is processed individually to stay within OpenAI rate limits.",
             icon="ℹ️",
         )

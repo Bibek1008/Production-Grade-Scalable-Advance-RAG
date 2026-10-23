@@ -1,4 +1,4 @@
-# Enterprise Agentic RAG: LangGraph · Guardrails · LLM Gateway · RAGAS Evals
+# Enterprise Agentic RAG: LangGraph · Gemini · Guardrails · RAGAS Evals
 
 ```mermaid
 graph LR
@@ -33,12 +33,10 @@ graph LR
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
     end
 
-    %% ── LLM Gateway ──────────────────────────────────────────────────────────
-    subgraph GATEWAY ["🌐  LLM Gateway"]
+    %% ── Gemini ───────────────────────────────────────────────────────────────
+    subgraph GEMINI ["🌐  Gemini API"]
         direction TB
-        PK["🔀 Portkey\nUnified Gateway"]
-        G1["🤖 OpenAI Primary\ngpt-5-mini · via Portkey"]
-        G2["🤖 Anthropic Fallback\nclaude-haiku-4-5 · via Portkey"]
+        GM["🤖 Gemini\n gemini-flash-lite-latest"]
     end
 
     %% ── Ingestion ────────────────────────────────────────────────────────────
@@ -75,10 +73,9 @@ graph LR
     RT --> QD
     QD --> FR
     FR --> RS
-    RS --> PK
-    PL --> PK
-    PK --> G1
-    PK -.->|fallback| G2
+    RS --> GM
+    PL --> GM
+    GR --> GM
     RS -.-> MEM
     MEM -.-> PL
 
@@ -112,7 +109,7 @@ graph LR
     class API,GR safety
     class PL,RT,RS agent
     class QD,FR retrieval
-    class PK,G1,G2 gateway
+    class GM gateway
     class LOADER,PARSED,EMB ingest
     class LF,LS obs
     class GD,RAGAS,TC,JUDGE evals
@@ -150,9 +147,7 @@ graph TB
         direction LR
         QD[("🗄️ Qdrant Cloud\nVector DB")]
         FR["⚡ Jina Reranker\nAPI · jina-reranker-v3"]
-        PK["🔀 Portkey Gateway\nRouting + Fallback"]
-        G1["🤖 OpenAI Primary\ngpt-5-mini · via Portkey"]
-        G2["🤖 Anthropic Fallback\nclaude-haiku-4-5 · via Portkey"]
+        GM["🤖 Google Gemini OpenAI-compatible API\ngemini-flash-lite-latest"]
     end
 
     subgraph INGEST ["5. Data Ingestion"]
@@ -187,10 +182,9 @@ graph TB
     RT --> QD
     QD --> FR
     FR --> RS
-    RS --> PK
-    PL --> PK
-    PK --> G1
-    PK -.->|"fallback"| G2
+    RS --> GM
+    PL --> GM
+    GR --> GM
     RS -.-> MEM
     MEM -.-> PL
 
@@ -221,7 +215,7 @@ graph TB
     class CHAT,EAPP ui
     class API,GR safety
     class PL,RT,RS agent
-    class QD,FR,PK,G1,G2 knowledge
+    class QD,FR,GM knowledge
     class LOAD,PROC,EMB ingest
     class GD,RAGAS,TC,JG evals
     class LF,LS obs
@@ -238,7 +232,7 @@ graph TB
     B["⚡ 2. FastAPI + 🛡️ NeMo Guardrails"]
     C["🧠 3. LangGraph Agent\nPlanner → Retriever → Responder"]
     D["🗄️ 4. Qdrant Cloud\n+ Jina AI Reranker"]
-    E["🌐 5. Portkey Gateway\nOpenAI gpt-5-mini · Anthropic Fallback"]
+    E["🌐 5. Google Gemini OpenAI-compatible API\ngemini-flash-lite-latest"]
     F["📥 6. Data Ingestion\nLocal Parsers · Jina Embeddings · processed_data/"]
     G["🧪 7. RAGAS Evals\nFaithfulness · Precision · Recall · Correctness"]
     H["📡 8. Monitoring\nLogfire · LangSmith"]

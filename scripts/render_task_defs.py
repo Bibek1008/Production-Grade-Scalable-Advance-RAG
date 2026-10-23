@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """Render ECS task definitions using values from .env and AWS state files."""
 
-import json
-import os
 import re
+import tempfile
 from pathlib import Path
 
-from dotenv import dotenv_values
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ENV_PATH = REPO_ROOT / ".env"
 TASK_DEF_DIR = REPO_ROOT / ".aws" / "task-definitions"
-OUTPUT_DIR = Path("/tmp")
+OUTPUT_DIR = Path(tempfile.gettempdir())
 
 
 def load_arns():
@@ -35,28 +31,22 @@ def load_state():
             for line in f:
                 # Handle both 'export KEY=value' and 'KEY=value' formats.
                 line = line.strip().removeprefix("export ")
-                m = re.match(r'([A-Z_0-9]+)=(.+)', line)
+                m = re.match(r"([A-Z_0-9]+)=(.+)", line)
                 if m:
                     state[m.group(1)] = m.group(2)
     return state
 
 
 def render_task_definitions():
-    env = dotenv_values(ENV_PATH)
     arns = load_arns()
     state = load_state()
 
     image_uri = f"{state['ECR_URI']}:latest"
     backend_url = f"http://{state['ALB_DNS']}"
-    portkey_config_id = env.get("PORTKEY_PRIMARY_CONFIG_ID", "").strip()
-    if not portkey_config_id:
-        raise ValueError("PORTKEY_PRIMARY_CONFIG_ID is missing in .env")
-
     placeholders = {
         "<IMAGE_NAME>": image_uri,
         "<AWS_REGION>": state.get("AWS_REGION", "us-east-1"),
         "<BACKEND_URL>": backend_url,
-        "<PORTKEY_PRIMARY_CONFIG_ID>": portkey_config_id,
     }
     # The task definition templates use <ARN_NAME> placeholders for secrets.
     for key, value in arns.items():

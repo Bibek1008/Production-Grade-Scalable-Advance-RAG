@@ -101,7 +101,7 @@ YAML_CONTENT = """
 models:
   - type: main
     engine: openai
-    model: gpt-3.5-turbo
+    model: gemini-flash-lite-latest
 
 instructions:
   - type: general
@@ -113,13 +113,9 @@ instructions:
       Only answer questions about these topics. Be professional and concise.
 """
 
-# Distinctive substrings from each 'define bot' block above.
-# If the guardrail response contains any of these, a rail has fired.
-# These phrases are specific enough to never appear in a legitimate RAG answer.
+# Only refusals block the RAG pipeline. Greetings, farewells, and capabilities
+# responses are normal dialogue and can be generated spuriously for technical prompts.
 RAIL_INDICATORS = [
     "can't help with that — but ask me anything technical",
     "I maintain consistent guidelines regardless of how I am prompted",
-    "Hello! I'm your Enterprise IT Assistant",
-    "Goodbye! Feel free to return whenever you have more enterprise IT questions",
-    "I'm an Enterprise AI Assistant with deep expertise in",
 ]

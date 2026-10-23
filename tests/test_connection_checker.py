@@ -6,10 +6,10 @@ import requests
 
 from app.services.health.connection_checker import (
     ConnectionResult,
+    _check_gemini,
     _check_jina_embeddings,
     _check_jina_reranker,
     _check_neon_postgres,
-    _check_portkey_gateway,
     _check_qdrant,
     _check_upstash_redis,
     check_all_connections,
@@ -28,22 +28,41 @@ def test_check_neon_postgres_success():
     mock_pool = MagicMock()
     mock_conn = MagicMock()
     mock_pool.getconn.return_value = mock_conn
-    with patch("app.services.health.connection_checker.ConnectionPool", return_value=mock_pool):
+    with (
+        patch("app.services.health.connection_checker.settings.NEON_DB_URL", "postgresql://test"),
+        patch("app.services.health.connection_checker.ConnectionPool", return_value=mock_pool),
+    ):
         result = _check_neon_postgres()
     assert result.healthy is True
     assert result.name == "postgres"
 
 
 def test_check_neon_postgres_failure():
-    with patch("app.services.health.connection_checker.ConnectionPool", side_effect=Exception("conn refused")):
+    with (
+        patch("app.services.health.connection_checker.settings.NEON_DB_URL", "postgresql://test"),
+        patch("app.services.health.connection_checker.ConnectionPool", side_effect=Exception("conn refused")),
+    ):
         result = _check_neon_postgres()
     assert result.healthy is False
-    assert "conn refused" in result.message
+    assert result.required is False
+    assert "Exception" in result.message
+
+
+def test_check_neon_postgres_unconfigured_uses_memory_saver():
+    with patch("app.services.health.connection_checker.settings.NEON_DB_URL", None):
+        result = _check_neon_postgres()
+    assert result.healthy is False
+    assert result.required is False
+    assert "in-memory checkpointing" in result.message
 
 
 def test_check_upstash_redis_success():
     mock_redis = MagicMock()
-    with patch("app.services.health.connection_checker.Redis.from_url", return_value=mock_redis):
+    with (
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_URL", "https://test.example.com"),
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_TOKEN", "test-token"),
+        patch("app.services.health.connection_checker.Redis.from_url", return_value=mock_redis),
+    ):
         result = _check_upstash_redis()
     assert result.healthy is True
     assert result.name == "redis"
@@ -51,9 +70,24 @@ def test_check_upstash_redis_success():
 
 
 def test_check_upstash_redis_failure():
-    with patch("app.services.health.connection_checker.Redis.from_url", side_effect=Exception("timeout")):
+    with (
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_URL", "https://test.example.com"),
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_TOKEN", "test-token"),
+        patch("app.services.health.connection_checker.Redis.from_url", side_effect=Exception("timeout")),
+    ):
         result = _check_upstash_redis()
     assert result.healthy is False
+
+
+def test_check_upstash_redis_unconfigured_uses_memory():
+    with (
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_URL", None),
+        patch("app.services.health.connection_checker.settings.UPSTASH_REDIS_REST_TOKEN", None),
+    ):
+        result = _check_upstash_redis()
+    assert result.healthy is False
+    assert result.required is False
+    assert "in-memory rate limiting" in result.message
 
 
 def test_check_qdrant_success():
@@ -62,7 +96,16 @@ def test_check_qdrant_success():
         result = _check_qdrant()
     assert result.healthy is True
     assert result.name == "qdrant"
-    mock_client.get_collections.assert_called_once()
+    mock_client.collection_exists.assert_called_once()
+
+
+def test_check_qdrant_requires_collection():
+    mock_client = MagicMock()
+    mock_client.collection_exists.return_value = False
+    with patch("app.services.health.connection_checker.QdrantClient", return_value=mock_client):
+        result = _check_qdrant()
+    assert result.healthy is False
+    assert "does not exist" in result.message
 
 
 def test_check_qdrant_failure():
@@ -71,28 +114,31 @@ def test_check_qdrant_failure():
     assert result.healthy is False
 
 
-def test_check_portkey_gateway_success():
-    mock_resp = MagicMock()
-    mock_resp.choices = [MagicMock(message=MagicMock(content="hi"))]
-    with patch("app.services.health.connection_checker.portkey_client.chat.completions.create", return_value=mock_resp):
-        result = _check_portkey_gateway()
+def test_check_gemini_success():
+    mock_resp = MagicMock(content="hi")
+    with patch("app.services.health.connection_checker.get_gemini_llm") as mock_llm:
+        mock_llm.return_value.invoke.return_value = mock_resp
+        result = _check_gemini()
     assert result.healthy is True
-    assert result.name == "llm_gateway"
+    assert result.name == "gemini"
 
 
-def test_check_portkey_gateway_empty_response():
-    mock_resp = MagicMock()
-    mock_resp.choices = []
-    with patch("app.services.health.connection_checker.portkey_client.chat.completions.create", return_value=mock_resp):
-        result = _check_portkey_gateway()
+def test_check_gemini_empty_response():
+    mock_resp = MagicMock(content="")
+    with patch("app.services.health.connection_checker.get_gemini_llm") as mock_llm:
+        mock_llm.return_value.invoke.return_value = mock_resp
+        result = _check_gemini()
     assert result.healthy is False
 
 
 def test_check_jina_embeddings_success():
     mock_response = MagicMock()
-    mock_response.json.return_value = {"data": [{"embedding": [0.1]}]}
+    mock_response.json.return_value = {"data": [{"embedding": [0.1] * 1024}]}
     mock_response.raise_for_status = MagicMock()
-    with patch("app.services.health.connection_checker.requests.post", return_value=mock_response):
+    with (
+        patch("app.services.health.connection_checker.settings.JINA_API_KEY", "test-key"),
+        patch("app.services.health.connection_checker.requests.post", return_value=mock_response),
+    ):
         result = _check_jina_embeddings()
     assert result.healthy is True
     assert result.name == "jina_embeddings"
@@ -101,7 +147,8 @@ def test_check_jina_embeddings_success():
 def test_check_jina_embeddings_no_key():
     with patch("app.services.health.connection_checker.settings.JINA_API_KEY", None):
         result = _check_jina_embeddings()
-    assert result.healthy is False
+    assert result.healthy is True
+    assert result.required is False
     assert "JINA_API_KEY not set" in result.message
 
 
@@ -109,7 +156,10 @@ def test_check_jina_reranker_success():
     mock_response = MagicMock()
     mock_response.json.return_value = {"results": [{"index": 0}]}
     mock_response.raise_for_status = MagicMock()
-    with patch("app.services.health.connection_checker.requests.post", return_value=mock_response):
+    with (
+        patch("app.services.health.connection_checker.settings.JINA_API_KEY", "test-key"),
+        patch("app.services.health.connection_checker.requests.post", return_value=mock_response),
+    ):
         result = _check_jina_reranker()
     assert result.healthy is True
     assert result.name == "jina_reranker"
@@ -118,9 +168,13 @@ def test_check_jina_reranker_success():
 def test_check_jina_reranker_failure():
     mock_response = MagicMock()
     mock_response.raise_for_status.side_effect = requests.HTTPError("service unavailable")
-    with patch("app.services.health.connection_checker.requests.post", return_value=mock_response):
+    with (
+        patch("app.services.health.connection_checker.settings.JINA_API_KEY", "test-key"),
+        patch("app.services.health.connection_checker.requests.post", return_value=mock_response),
+    ):
         result = _check_jina_reranker()
     assert result.healthy is False
+    assert result.required is False
     assert result.name == "jina_reranker"
 
 
@@ -129,7 +183,7 @@ def test_check_all_connections_returns_all_results():
         lambda: _ok("postgres"),
         lambda: _ok("redis"),
         lambda: _ok("qdrant"),
-        lambda: _ok("llm_gateway"),
+        lambda: _ok("gemini"),
         lambda: _ok("jina_embeddings"),
         lambda: _fail("jina_reranker"),
     ]

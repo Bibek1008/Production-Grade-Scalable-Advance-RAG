@@ -16,10 +16,11 @@ services:
     ports:
       - "8000:8080"
     environment:
-      # By default the app reads QDRANT_URL / QDRANT_API_KEY from the .env file.
-      # Set these explicitly here only when you want to override the .env values
-      # (e.g. to point at the local qdrant service above).
+      # Inside Compose, use the service DNS name rather than container localhost.
+      QDRANT_URL: ${DOCKER_QDRANT_URL:-http://qdrant:6333}
+      QDRANT_API_KEY: ${DOCKER_QDRANT_API_KEY:-}
       QDRANT_COLLECTION: enterprise_rag
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
       RATE_LIMIT_PER_MINUTE: "60"
       RAG_API_KEY: ""
       LOGFIRE_IGNORE_NO_CONFIG: "1"

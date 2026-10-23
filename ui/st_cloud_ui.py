@@ -1,15 +1,15 @@
 import os
-import streamlit as st
-import requests
 import time
 import uuid
-import logfire
 
+import logfire
+import requests
+import streamlit as st
 
 # Initialize Logfire
 try:
     logfire.configure(token=st.secrets.get("LOGFIRE_TOKEN", os.getenv("LOGFIRE_TOKEN")))
-    logfire.instrument_requests()   # propagates trace context to the FastAPI backend
+    logfire.instrument_requests()  # propagates trace context to the FastAPI backend
     LOGFIRE_STATUS = "Connected & Tracing"
 except Exception:
     LOGFIRE_STATUS = "Standby (No Token)"
@@ -43,7 +43,7 @@ with st.sidebar:
     st.markdown("---")
     st.success(f"Logfire: {LOGFIRE_STATUS}")
     st.info(f"Memory ID: {st.session_state.session_id[:8]}")
-    
+
     if st.button("🗑️ Clear History & Memory", width="stretch", type="primary"):
         logfire.warning(f"🗑️ Memory Wipe Triggered for session: {st.session_state.session_id}")
         st.session_state.messages = []
@@ -63,7 +63,6 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("Ask about your documentation..."):
     # START TRACE: User Interaction
     with logfire.span("💬 User Chat Interaction", user_query=prompt, session_id=st.session_state.session_id):
-        
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(prompt)
@@ -112,8 +111,18 @@ if prompt := st.chat_input("Ask about your documentation..."):
             if sources:
                 with st.expander(f"📄 Retrieved Context ({len(sources)} chunks)"):
                     for i, source in enumerate(sources):
-                        st.caption(f"Chunk {i + 1}")
-                        st.info(source)
+                        if isinstance(source, dict):
+                            content = source.get("content", "")
+                            source_name = source.get("source", "Unknown source")
+                            score = source.get("score")
+                        else:
+                            content = source
+                            source_name = "Retrieved context"
+                            score = None
+                        st.caption(f"Chunk {i + 1}: {source_name}")
+                        if score is not None:
+                            st.caption(f"Relevance score: {score:.3f}")
+                        st.info(content)
             else:
                 st.caption("ℹ️ No context retrieved — conversational response.")
 

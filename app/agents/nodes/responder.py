@@ -2,15 +2,15 @@ import logfire
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from app.agents.state import AgentState
-from app.config import settings
-from app.gateway import extract_cache_status, portkey_client
+from app.gateway import get_gemini_llm
+
+llm = get_gemini_llm()
 
 
 def generate_node(state: AgentState):
     """
     Synthesizes a response using both Documentation Context AND Conversation History.
-    Uses the native Portkey client (not LangChain) so we can read the
-    x-portkey-cache-status response header and surface Cache: Hit in the UI.
+    Uses Gemini through LangChain for answer generation.
     """
     query = state["current_query"]
 
@@ -39,15 +39,41 @@ def generate_node(state: AgentState):
         full_context = ""
 
         for doc in state["documents"]:
-            if len(full_context) + len(doc) < max_context_chars:
-                full_context += doc + "\n\n"
+            content = f"Source: {doc['source']}\n{doc['content']}"
+            if len(full_context) + len(content) < max_context_chars:
+                full_context += content + "\n\n"
             else:
-                logfire.warning("Context truncated to fit Groq TPM limits.")
+                logfire.warning("Context truncated to fit the configured Gemini request limit.")
                 break
+
+        if not full_context.strip():
+            return {
+                "final_answer": (
+                    "I couldn't find relevant documents in the knowledge base for this question. "
+                    "Please ingest the relevant documents or ask a conversational question."
+                ),
+                "status": "No documents retrieved.",
+                "plan": state["plan"] + ["No matching documents found"],
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "I couldn't find relevant documents in the knowledge base for this question. "
+                            "Please ingest the relevant documents or ask a conversational question."
+                        ),
+                    }
+                ],
+            }
 
         prompt = f"""
         You are a Senior Technical Architect.
-        Answer the question using the TECHNICAL CONTEXT provided.
+        Answer using only the TECHNICAL CONTEXT below and cite its source filenames.
+        For troubleshooting questions, turn documented expected behaviors and architecture
+        into a short list of checks when they are relevant. Clearly label these as checks
+        derived from the documentation, not as documented procedures. If the context lacks
+        specific commands, diagnostic steps, or fixes, say so explicitly rather than
+        inventing them. Do not claim that the documents contain no useful information when
+        they provide relevant facts.
 
         TECHNICAL CONTEXT:
         {full_context}
@@ -62,29 +88,21 @@ def generate_node(state: AgentState):
     with logfire.span("✍️ LLM Synthesis"):
         try:
             response = _generate_response(prompt)
-            content = response.choices[0].message.content
-            cache_status = extract_cache_status(response)
-            is_cache_hit = cache_status == "HIT"
-
-            if is_cache_hit:
-                logfire.info("⚡ Gateway Cache Hit — response served from Portkey cache.")
-                plan_update = state["plan"] + ["Cache: Hit ⚡"]
-                status = "Cache hit — instant response."
-            else:
-                logfire.info("✅ Response synthesised via LLM.")
-                plan_update = state["plan"]
-                status = "Response generated."
+            content = response.content
+            if not isinstance(content, str) or not content.strip():
+                raise RuntimeError("Gemini returned an empty response.")
+            logfire.info("✅ Response synthesised via Gemini.")
 
             return {
                 "final_answer": content,
-                "status": status,
-                "plan": plan_update,
+                "status": "Response generated.",
+                "plan": state["plan"],
                 "messages": [{"role": "assistant", "content": content}],
             }
 
         except Exception as e:
             logfire.error(f"LLM Generation failed after retries: {e}")
-            raise e
+            raise
 
 
 @retry(
@@ -94,8 +112,5 @@ def generate_node(state: AgentState):
     before_sleep=before_sleep_log(logfire, "warning"),
 )
 def _generate_response(prompt: str):
-    """Call the LLM gateway with retry logic for transient failures."""
-    return portkey_client.chat.completions.create(
-        model=f"@{settings.PORTKEY_PRIMARY_SLUG}/gpt-5-mini",
-        messages=[{"role": "user", "content": prompt}],
-    )
+    """Call Gemini with retry logic for transient failures."""
+    return llm.invoke(prompt)

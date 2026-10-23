@@ -79,27 +79,22 @@ Store all sensitive values in **AWS Secrets Manager** and inject them into task 
 - `UPSTASH_REDIS_REST_TOKEN`
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
-- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
 - `JINA_API_KEY`
-- `PORTKEY_API_KEY`
 - `RAG_API_KEY` (production auth)
 - `LOGFIRE_TOKEN`
 - `LANGSMITH_API_KEY`
-- `JUDGE_OPENAI_API_KEY` (optional) — Dedicated OpenAI key for RAGAS eval judge. Falls back to `OPENAI_API_KEY` if omitted; not required in the ECS API task definition.
+- `JUDGE_OPENAI_API_KEY` (optional) — Dedicated OpenAI key for the RAGAS eval judge; not required in the ECS API task definition.
 
 ### Plain environment variables
 
 - `QDRANT_COLLECTION=enterprise_rag`
 - `RATE_LIMIT_PER_MINUTE=60`
-- `PORTKEY_PRIMARY_CONFIG_ID` — system-generated `pc-...` ID of the single saved config that contains primary and fallback targets
-- `PORTKEY_PRIMARY_SLUG` — human-readable name (`marathon-api`)
-- `PORTKEY_FALLBACK_SLUG` — human-readable name (`anthropic-fallback`)
+- `GEMINI_MODEL=gemini-flash-lite-latest` (optional; this is the application default)
 - `STRICT_STARTUP=true` (production only; set to `false` for local development)
 - `PYTHONUNBUFFERED=1`
 
-> **Note on Portkey configs:** Create a single saved config in Portkey first. The gateway header `x-portkey-config-id` requires the system-generated `pc-...` ID, not the human-readable slug. Set `PORTKEY_PRIMARY_CONFIG_ID` to that `pc-...` value. The slugs (`marathon-api`, `anthropic-fallback`) are kept for readability and identify the providers inside the config targets.
-
-> **Note on `STRICT_STARTUP`:** When `true`, the FastAPI server refuses to start if any external dependency (Neon, Upstash, Qdrant, Portkey, Jina) is unreachable. Set to `false` locally so the app starts even if some services are optional.
+> **Note on `STRICT_STARTUP`:** When `true`, the FastAPI server refuses to start if a required dependency (Gemini or Qdrant with its configured collection) is unreachable. Neon, Upstash, observability, and reranking are optional.
 
 > **Note on embedding dimension:** The app uses `jina-embeddings-v3` which produces **1024-dimensional** vectors. The Qdrant collection must be created with `size=1024` and `distance=Cosine`. The ingestion script (`app.ingestion.processor`) probes the model at runtime and creates the collection with the correct dimension automatically.
 
@@ -149,8 +144,7 @@ This runs the container as a non-root user.
       "environment": [
         {"name": "QDRANT_COLLECTION", "value": "enterprise_rag"},
         {"name": "RATE_LIMIT_PER_MINUTE", "value": "60"},
-        {"name": "PORTKEY_PRIMARY_SLUG", "value": "marathon-api"},
-        {"name": "PORTKEY_FALLBACK_SLUG", "value": "anthropic-fallback"},
+        {"name": "GEMINI_MODEL", "value": "gemini-flash-lite-latest"},
         {"name": "STRICT_STARTUP", "value": "true"},
         {"name": "PYTHONUNBUFFERED", "value": "1"}
       ],
@@ -160,9 +154,8 @@ This runs the container as a non-root user.
         {"name": "UPSTASH_REDIS_REST_TOKEN", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/upstash-redis-rest-token"},
         {"name": "QDRANT_URL", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/qdrant-url"},
         {"name": "QDRANT_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/qdrant-api-key"},
-        {"name": "OPENAI_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/openai-api-key"},
+        {"name": "GEMINI_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/gemini-api-key"},
         {"name": "JINA_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/jina-api-key"},
-        {"name": "PORTKEY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/portkey-api-key"},
         {"name": "RAG_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/rag-api-key"},
         {"name": "LOGFIRE_TOKEN", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/logfire-token"},
         {"name": "LANGSMITH_API_KEY", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:rag/langsmith-api-key"}
@@ -333,9 +326,8 @@ Set these in **Settings → Secrets and variables → Actions**:
 | `UPSTASH_REDIS_REST_TOKEN_ARN` | Secrets Manager ARN for `UPSTASH_REDIS_REST_TOKEN` |
 | `QDRANT_URL_ARN` | Secrets Manager ARN for `QDRANT_URL` |
 | `QDRANT_API_KEY_ARN` | Secrets Manager ARN for `QDRANT_API_KEY` |
-| `OPENAI_API_KEY_ARN` | Secrets Manager ARN for `OPENAI_API_KEY` |
+| `GEMINI_API_KEY_ARN` | Secrets Manager ARN for `GEMINI_API_KEY` |
 | `JINA_API_KEY_ARN` | Secrets Manager ARN for `JINA_API_KEY` |
-| `PORTKEY_API_KEY_ARN` | Secrets Manager ARN for `PORTKEY_API_KEY` |
 | `RAG_API_KEY_ARN` | Secrets Manager ARN for `RAG_API_KEY` |
 | `LOGFIRE_TOKEN_ARN` | Secrets Manager ARN for `LOGFIRE_TOKEN` |
 | `LANGSMITH_API_KEY_ARN` | Secrets Manager ARN for `LANGSMITH_API_KEY` |
@@ -364,7 +356,7 @@ Set these in **Settings → Secrets and variables → Actions**:
 
 Do **not** run ingestion as a long-running ECS service. Use one of these patterns:
 
-1. **Fargate one-off task:** run `python -m app.ingestion.processor s3://bucket/data --wipe` via ECS `RunTask`.
+1. **Fargate one-off task:** run `python -m app.ingestion.processor <mounted-data-directory>` via ECS `RunTask`. Do not pass `--wipe` unless deleting the existing collection is explicitly intended.
 2. **AWS Batch:** for large or scheduled ingestion jobs.
 3. **GitHub Actions:** for small static datasets, run ingestion as a CI/CD step after deployment.
 

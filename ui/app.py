@@ -92,7 +92,7 @@ if prompt := st.chat_input("Ask about your documentation..."):
                 try:
                     # DISTRIBUTED TRACE: Calling Backend
                     with logfire.span("📡 Calling RAG Backend"):
-                        base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+                        base_url = os.getenv("BACKEND_URL", "").strip().rstrip("/") or "http://localhost:8000"
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
                         headers = {
@@ -101,7 +101,8 @@ if prompt := st.chat_input("Ask about your documentation..."):
                         }
                         # First guardrails invocation can be slow as NeMo downloads
                         # configs/models; allow up to 3 minutes.
-                        response = requests.post(url, json=payload, headers=headers, timeout=180)
+                        response = requests.post(url, json=payload, headers=headers, timeout=300)
+                        response.raise_for_status()
                         data = response.json()
 
                     # Guardrails can block synchronously.
@@ -150,9 +151,20 @@ if prompt := st.chat_input("Ask about your documentation..."):
                     if sources:
                         with st.expander("📄 View Retrieved Context (Sources)"):
                             for i, source in enumerate(sources):
-                                preview = source[:100].replace("\n", " ") + "..."
-                                with st.expander(f"Chunk {i + 1}: {preview}"):
-                                    st.info(source)
+                                if isinstance(source, dict):
+                                    content = source.get("content", "")
+                                    source_name = source.get("source", "Unknown source")
+                                    score = source.get("score")
+                                else:
+                                    content = source
+                                    source_name = "Retrieved context"
+                                    score = None
+                                preview = content[:100].replace("\n", " ") + "..."
+                                label = f"Chunk {i + 1}: {source_name} — {preview}"
+                                with st.expander(label):
+                                    if score is not None:
+                                        st.caption(f"Relevance score: {score:.3f}")
+                                    st.info(content)
                 except Exception as e:
                     logfire.error(f"❌ UI-Backend Connection Failed: {e}")
                     status.update(label="❌ Connection Failed", state="error")

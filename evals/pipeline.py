@@ -16,8 +16,8 @@ import requests
 API_URL = "http://localhost:8000/query"
 STATUS_URL_TEMPLATE = "http://localhost:8000/query/status/{job_id}"
 RESPONSE_TRUNCATE = 300
-DELAY_BETWEEN_CALLS = 10  # seconds — stays within Groq RPM on the main key
-REQUEST_TIMEOUT = 120  # seconds — guardrails + LangGraph + Groq can take >60s
+DELAY_BETWEEN_CALLS = 10  # seconds — avoid exhausting provider quotas during evals
+REQUEST_TIMEOUT = 120  # seconds — guardrails + LangGraph can take >60s
 POLL_INTERVAL = 3  # seconds between job status polls
 MAX_POLL_ATTEMPTS = 60  # ~3 minutes max wait per sample
 
@@ -110,7 +110,9 @@ def run_pipeline(golden_dataset: dict, progress_callback=None) -> dict:
                     sources = data.get("sources") or []
 
                     sample["actual_response"] = raw_answer[:RESPONSE_TRUNCATE]
-                    sample["actual_contexts"] = sources[:5]
+                    sample["actual_contexts"] = [
+                        source.get("content", "") if isinstance(source, dict) else source for source in sources[:5]
+                    ]
                     sample["actual_tools_called"] = [detect_tool(thought_process)]
 
                     logfire.info(
