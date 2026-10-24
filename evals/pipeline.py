@@ -24,6 +24,17 @@ POLL_INTERVAL = 3  # seconds between job status polls
 MAX_POLL_ATTEMPTS = 60  # ~3 minutes max wait per sample
 
 
+class BackendAPIError(RuntimeError):
+    """An API request failed with a non-success HTTP status."""
+
+
+def _raise_for_status(response: requests.Response, endpoint: str) -> None:
+    try:
+        response.raise_for_status()
+    except requests.HTTPError:
+        raise BackendAPIError(f"FastAPI {endpoint} returned HTTP {response.status_code}.") from None
+
+
 def _api_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {settings.API_KEY}"} if settings.API_KEY else {}
 
@@ -51,7 +62,7 @@ def _poll_for_result(job_id: str) -> dict:
     for attempt in range(MAX_POLL_ATTEMPTS):
         with logfire.span("🔄 Eval polling job", job_id=job_id, attempt=attempt + 1):
             resp = requests.get(url, headers=_api_headers(), timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
+            _raise_for_status(resp, "/query/status")
             data = resp.json()
 
         status = data.get("status", "UNKNOWN")
@@ -73,7 +84,7 @@ def _fetch_query_result(question: str, thread_id: str) -> dict:
         headers=_api_headers(),
         timeout=REQUEST_TIMEOUT,
     )
-    resp.raise_for_status()
+    _raise_for_status(resp, "/query")
     data = resp.json()
 
     # Guardrails can block synchronously without creating a job.
