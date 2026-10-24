@@ -2,12 +2,62 @@
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from nemoguardrails import LLMRails
+from nemoguardrails.embeddings.basic import BasicEmbeddingsIndex
+from nemoguardrails.embeddings.index import IndexItem
 from nemoguardrails.llm.prompts import get_prompt
 from nemoguardrails.llm.types import Task
 
 import app.guardrails.rails as guardrails
 from app.config import settings
+
+
+@pytest.mark.asyncio
+async def test_default_embeddings_index_builds_and_searches_numpy_matrix(monkeypatch):
+    index = BasicEmbeddingsIndex()
+    vectors = {
+        "first": [3.0, 0.0],
+        "second": [0.0, 4.0],
+        "query": [0.0, 2.0],
+    }
+
+    async def get_embeddings(texts):
+        return [vectors[text] for text in texts]
+
+    monkeypatch.setattr(index, "_get_embeddings", get_embeddings)
+    first = IndexItem(text="first")
+    second = IndexItem(text="second")
+    await index.add_items([first, second])
+
+    await index.build()
+
+    built_index = index.embeddings_index
+    assert isinstance(built_index, np.ndarray)
+    assert built_index.dtype == np.float32
+    np.testing.assert_allclose(built_index, [[1.0, 0.0], [0.0, 1.0]])
+    assert await index.search("query", max_results=1) == [second]
+
+
+def test_first_guardrails_query_builds_index_and_completes(monkeypatch):
+    monkeypatch.setattr(guardrails, "_rails", None)
+    monkeypatch.setattr(
+        guardrails,
+        "get_portkey_llm",
+        lambda: FakeListChatModel(responses=["express greeting"] * 20),
+    )
+
+    async def get_embeddings(self, texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(BasicEmbeddingsIndex, "_get_embeddings", get_embeddings)
+    guardrails.initialize_rails()
+
+    assert isinstance(guardrails._rails, LLMRails)
+    blocked, message = guardrails.guard("hello")
+    assert (blocked, message) == (False, None)
 
 
 def test_guardrails_use_configured_gemini_prompt(monkeypatch):

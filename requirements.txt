@@ -43,7 +43,7 @@ logfire[fastapi,requests]   # Pydantic Logfire — FastAPI + requests instrument
 loguru                      # Enhanced logging for Python
 
 # --- GUARDRAILS ---
-nemoguardrails              # NVIDIA NeMo Guardrails for input/output safety rails
+nemoguardrails==0.23.0      # NumPy-backed intent index avoids Annoy's native index build
 langchain-nvidia-ai-endpoints # LangChain integration with NVIDIA AI Endpoints
 
 # --- PRODUCTION PERSISTENCE & RELIABILITY ---
