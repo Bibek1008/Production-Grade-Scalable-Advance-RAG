@@ -1,12 +1,14 @@
 """Consistent Jina or local embeddings for document indexing and retrieval."""
 
 import threading
+import time
 
 import logfire
 import requests
 from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.config import settings
+from app.logging import log_query_stage
 
 BATCH_SIZE = 64
 _EMBEDDING_DIM = 1024
@@ -134,7 +136,7 @@ def _embed(texts: list[str], task: str) -> list[list[float]]:
         try:
             return _embed_jina(texts, task)
         except Exception as error:
-            logfire.error(f"Jina Embeddings API failed for the configured vector model: {error}")
+            logfire.error(f"Jina Embeddings API failed: {type(error).__name__}")
             raise RuntimeError(
                 "Jina embedding failed. Verify JINA_API_KEY, account quota, and API availability; "
                 "no alternate vector model was used."
@@ -144,7 +146,28 @@ def _embed(texts: list[str], task: str) -> list[list[float]]:
 
 def embed_query(query: str) -> list[float]:
     """Embed one retrieval query."""
-    return _embed([query], task="retrieval.query")[0]
+    _init()
+    started_at = time.perf_counter()
+    log_query_stage("embedding", "started", provider=_model_type)
+    try:
+        vector = _embed([query], task="retrieval.query")[0]
+    except Exception as error:
+        log_query_stage(
+            "embedding",
+            "failed",
+            started_at=started_at,
+            provider=_model_type,
+            error=error,
+        )
+        raise
+    log_query_stage(
+        "embedding",
+        "completed",
+        started_at=started_at,
+        provider=_model_type,
+        dimensions=len(vector),
+    )
+    return vector
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

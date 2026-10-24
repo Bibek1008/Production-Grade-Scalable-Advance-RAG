@@ -9,6 +9,10 @@ from app.observability import configure_logfire
 
 configure_logfire()
 
+import faulthandler
+
+faulthandler.enable()
+
 # Now safe to import app modules - logfire is already active
 import time
 import uuid
@@ -24,7 +28,7 @@ from pydantic import BaseModel
 from app.agents.graph import build_graph, close_checkpointer
 from app.guardrails import guard, initialize_rails
 from app.health import router as health_router
-from app.logging import set_request_id
+from app.logging import log_query_stage, request_id_context
 from app.services.health.connection_checker import check_all_connections, log_connection_summary
 
 # Custom Prometheus metrics
@@ -224,17 +228,40 @@ def query(
     q = body.q
     thread_id = body.thread_id
     request_id = str(uuid.uuid4())
-    set_request_id(request_id)
-
     start = time.perf_counter()
-    with logfire.span("🔍 /query", request_id=request_id, thread_id=thread_id):
+    with request_id_context(request_id):
+        return _process_query(q, thread_id, request_id, start)
+
+
+def _process_query(q: str, thread_id: str | None, request_id: str, start: float) -> dict | JSONResponse:
+    """Run the guarded graph pipeline within the request's logging context."""
+    log_query_stage("query", "received_and_validated")
+    graph_started_at = None
+    with logfire.span("🔍 /query", request_id=request_id):
         # Gate: run guardrails synchronously so blocked requests never run the graph.
-        rail_fired, rail_response = guard(q)
+        guardrails_started_at = time.perf_counter()
+        log_query_stage("guardrails", "started")
+        try:
+            rail_fired, rail_response = guard(q)
+        except Exception as error:
+            log_query_stage(
+                "guardrails",
+                "failed",
+                started_at=guardrails_started_at,
+                error=error,
+            )
+            raise
+        log_query_stage(
+            "guardrails",
+            "completed",
+            started_at=guardrails_started_at,
+            outcome="blocked" if rail_fired else "allowed",
+        )
         if rail_fired:
             GUARDRAILS_BLOCKS_TOTAL.labels(blocked="true").inc()
             RAG_REQUESTS_TOTAL.labels(status="blocked").inc()
             RAG_REQUEST_DURATION.observe(time.perf_counter() - start)
-            logfire.info("🛡️ Request blocked by guardrails", request_id=request_id, thread_id=thread_id)
+            logfire.info("Request blocked by Guardrails", request_id=request_id)
             return {
                 "question": q,
                 "answer": rail_response,
@@ -255,15 +282,14 @@ def query(
                 "status": "Initializing Graph...",
             }
             config = {"configurable": {"thread_id": thread_id}}
+            graph_started_at = time.perf_counter()
+            log_query_stage("graph", "started")
             final_output = rag_agent.invoke(initial_state, config=config)
+            log_query_stage("graph", "completed", started_at=graph_started_at)
 
             RAG_REQUESTS_TOTAL.labels(status="success").inc()
             RAG_REQUEST_DURATION.observe(time.perf_counter() - start)
-            logfire.info(
-                "✅ RAG pipeline completed",
-                request_id=request_id,
-                thread_id=thread_id,
-            )
+            logfire.info("RAG pipeline completed", request_id=request_id)
             return {
                 "question": q,
                 "answer": final_output.get("final_answer"),
@@ -272,13 +298,19 @@ def query(
                 "sources": final_output.get("documents", []),
             }
         except Exception as e:
+            if graph_started_at is not None:
+                log_query_stage(
+                    "graph",
+                    "failed",
+                    started_at=graph_started_at,
+                    error=e,
+                )
             RAG_REQUESTS_TOTAL.labels(status="error").inc()
             RAG_REQUEST_DURATION.observe(time.perf_counter() - start)
             logfire.error(
                 "RAG pipeline failed",
                 error_type=type(e).__name__,
                 request_id=request_id,
-                thread_id=thread_id,
             )
             return JSONResponse(
                 status_code=500,

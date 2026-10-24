@@ -1,7 +1,10 @@
+import time
+
 import logfire
 
 from app.agents.state import AgentState
 from app.gateway import get_portkey_llm
+from app.logging import log_query_stage
 
 llm = get_portkey_llm()
 
@@ -36,8 +39,19 @@ def planner_node(state: AgentState):
     """
 
     with logfire.span("🧠 Planner Decision"):
-        decision = llm.invoke(prompt).content.strip()
-        logfire.info(f"Intent identified: {decision}")
+        started_at = time.perf_counter()
+        log_query_stage("planner", "started")
+        try:
+            decision = llm.invoke(prompt).content.strip()
+        except Exception as error:
+            log_query_stage("planner", "failed", started_at=started_at, error=error)
+            raise
+        log_query_stage(
+            "planner",
+            "completed",
+            started_at=started_at,
+            intent="conversational" if decision == "CONVERSATIONAL" else "technical",
+        )
 
     if decision == "CONVERSATIONAL":
         return {

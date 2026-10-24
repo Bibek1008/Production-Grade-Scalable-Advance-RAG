@@ -49,8 +49,8 @@ def guard(message: str) -> tuple[bool, str | None]:
         fired = any(indicator in content for indicator in RAIL_INDICATORS)
 
         if fired:
-            logfire.info(f"🛡️ Guardrails fired | query='{message[:80]}'")
+            logfire.info("Guardrails blocked the request.")
             return True, content
 
-        logfire.info("✅ Guardrails passed.")
+        logfire.info("Guardrails allowed the request.")
         return False, None
