@@ -1,6 +1,6 @@
 """Regression tests for the Gemini-backed NeMo Guardrails configuration."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from nemoguardrails.llm.prompts import get_prompt
@@ -59,3 +59,15 @@ def test_refusal_responses_still_block_requests(monkeypatch, response):
 
     assert blocked is True
     assert message == response
+
+
+def test_guardrails_logs_block_without_user_content(monkeypatch):
+    rails = MagicMock()
+    rails.generate.return_value = {"content": "I cannot help with that request."}
+    monkeypatch.setattr(guardrails, "_rails", rails)
+    query = "private user question"
+
+    with patch("app.guardrails.rails.logfire.info") as info:
+        guardrails.guard(query)
+
+    assert all(query not in str(call) for call in info.call_args_list)

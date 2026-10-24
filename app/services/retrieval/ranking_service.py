@@ -5,6 +5,7 @@ import requests
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from app.config import settings
+from app.logging import log_query_stage
 
 _JINA_RERANK_URL = "https://api.jina.ai/v1/rerank"
 _JINA_RERANK_MODEL = "jina-reranker-v3"
@@ -81,21 +82,31 @@ def rerank_documents(query: str, documents: list[str], top_n: int = 5) -> list[s
     reranking ultimately fails, ensuring the user still receives an answer.
     """
     if not documents:
+        log_query_stage("reranking", "skipped", reason="no_documents", top_n=top_n)
         return []
 
     if not settings.JINA_API_KEY:
-        logfire.warning("⚠️ JINA_API_KEY not set — skipping reranking.")
+        log_query_stage("reranking", "skipped", reason="provider_not_configured", top_n=top_n)
         return documents[:top_n]
 
-    start_time = time.time()
-    logfire.info(f"📡 [Reranker] Sending {len(documents)} docs to Jina Reranker API...")
+    started_at = time.perf_counter()
+    log_query_stage("reranking", "started", document_count=len(documents), top_n=top_n)
 
     try:
         reranked_docs = _rerank(query, documents, top_n)
-        duration = time.time() - start_time
-        logfire.info(f"✅ [Reranker] Done in {duration:.2f}s.")
+        log_query_stage(
+            "reranking",
+            "completed",
+            started_at=started_at,
+            selected_count=len(reranked_docs),
+        )
         return reranked_docs
     except Exception as e:
-        logfire.error(f"❌ [Reranker] Semantic Reranking Failed after retries: {e}")
+        log_query_stage(
+            "reranking",
+            "failed",
+            started_at=started_at,
+            error=e,
+        )
         # Fallback to the original Qdrant order to ensure the user still gets an answer
         return documents[:top_n]

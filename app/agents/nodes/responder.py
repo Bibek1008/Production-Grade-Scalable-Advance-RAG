@@ -1,8 +1,11 @@
+import time
+
 import logfire
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from app.agents.state import AgentState
 from app.gateway import get_portkey_llm
+from app.logging import log_query_stage
 
 llm = get_portkey_llm()
 
@@ -47,6 +50,7 @@ def generate_node(state: AgentState):
                 break
 
         if not full_context.strip():
+            log_query_stage("generation", "skipped", reason="no_documents")
             return {
                 "final_answer": (
                     "I couldn't find relevant documents in the knowledge base for this question. "
@@ -86,12 +90,14 @@ def generate_node(state: AgentState):
         """
 
     with logfire.span("✍️ LLM Synthesis"):
+        started_at = time.perf_counter()
+        log_query_stage("generation", "started")
         try:
             response = _generate_response(prompt)
             content = response.content
             if not isinstance(content, str) or not content.strip():
                 raise RuntimeError("Gemini returned an empty response.")
-            logfire.info("Response synthesised via the configured Portkey Gemini route.")
+            log_query_stage("generation", "completed", started_at=started_at)
 
             return {
                 "final_answer": content,
@@ -101,7 +107,7 @@ def generate_node(state: AgentState):
             }
 
         except Exception as e:
-            logfire.error(f"LLM Generation failed after retries: {e}")
+            log_query_stage("generation", "failed", started_at=started_at, error=e)
             raise
 
 
