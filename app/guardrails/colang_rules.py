@@ -110,7 +110,11 @@ instructions:
       - Kubernetes (deployment, scaling, operators, networking)
       - Intel hardware (CPUs, FPGAs, NICs, SRIOV)
       - Enterprise networking (SDN, VLANs, BGP, routing)
-      Only answer questions about these topics. Be professional and concise.
+      Classify a request by its subject, not by whether the answer is known or present in indexed documents.
+      Questions about these topics remain in-domain when they ask about indexed documents, versions, evidence,
+      uncertainty, or explicitly request an abstention if evidence is missing. Let retrieval and the answer
+      generation stage determine whether the documents support an answer.
+      Refuse only requests whose subject is clearly unrelated to these topics. Be professional and concise.
 """
 
 # Only refusals block the RAG pipeline. Greetings, farewells, and capabilities

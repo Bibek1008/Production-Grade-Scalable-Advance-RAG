@@ -74,6 +74,56 @@ def test_guardrails_use_configured_gemini_prompt(monkeypatch):
     assert prompt.messages is None
 
 
+def test_guardrails_intent_policy_allows_in_domain_abstention(monkeypatch):
+    monkeypatch.setattr(guardrails, "_rails", None)
+    monkeypatch.setattr(guardrails, "get_portkey_llm", lambda: object())
+    monkeypatch.setattr(guardrails, "LLMRails", lambda config, llm: config)
+
+    guardrails.initialize_rails()
+
+    general_instructions = next(
+        instruction.content for instruction in guardrails._rails.instructions if instruction.type == "general"
+    )
+    assert "Classify a request by its subject" in general_instructions
+    assert "explicitly request an abstention if evidence is missing" in general_instructions
+    assert "Refuse only requests whose subject is clearly unrelated" in general_instructions
+
+
+@pytest.mark.parametrize(
+    ("query", "response", "blocked"),
+    [
+        (
+            "What does kube-scheduler do?",
+            "user ask technical question",
+            False,
+        ),
+        (
+            "According to the indexed documents, what Kubernetes feature was introduced in version 9.99? "
+            "If the documents don't establish this, explicitly say that the answer was not found in the documents.",
+            "user ask technical question",
+            False,
+        ),
+        (
+            "What is the best restaurant near me?",
+            "I'm an Enterprise IT Assistant focused on Kubernetes, Intel hardware, and networking. "
+            "I can't help with that — but ask me anything technical!",
+            True,
+        ),
+    ],
+    ids=("in-domain", "in-domain-abstention", "out-of-domain"),
+)
+def test_guardrails_routes_domain_and_evidence_requests(query, response, blocked, monkeypatch):
+    rails = MagicMock()
+    rails.generate.return_value = {"content": response}
+    monkeypatch.setattr(guardrails, "_rails", rails)
+
+    actual_blocked, message = guardrails.guard(query)
+
+    assert actual_blocked is blocked
+    assert message == (response if blocked else None)
+    rails.generate.assert_called_once_with(messages=[{"role": "user", "content": query}])
+
+
 @pytest.mark.parametrize(
     "response",
     [
