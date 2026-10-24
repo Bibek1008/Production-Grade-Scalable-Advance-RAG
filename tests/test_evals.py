@@ -4,6 +4,9 @@ import importlib.util
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
+
 # Load eval modules directly from file to avoid importing the whole evals package
 # (which pulls in ragas and can fail in a minimal test environment).
 _ANGEL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,6 +68,37 @@ def test_run_pipeline_populates_actual_response():
     assert sample["actual_contexts"] == ["ctx1"]
     assert sample["actual_tools_called"] == ["retrieve_documents"]
     mock_post.assert_called_once()
+
+
+def test_run_pipeline_reports_http_status_without_response_body():
+    golden = {
+        "rag_samples": [
+            {
+                "id": 1,
+                "question": "What is Redis?",
+                "reference": "Redis is a data store.",
+                "relevant_contexts": [],
+                "expected_tools": ["retrieve_documents"],
+                "actual_response": "",
+                "actual_contexts": [],
+                "actual_tools_called": [],
+            }
+        ],
+        "guardrails_samples": [],
+    }
+    response = MagicMock()
+    response.status_code = 503
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "Sensitive backend response body",
+        response=response,
+    )
+
+    with patch.object(pipeline_mod.requests, "post", return_value=response):
+        with pytest.raises(pipeline_mod.BackendAPIError) as error:
+            run_pipeline(golden, progress_callback=None)
+
+    assert str(error.value) == "FastAPI /query returned HTTP 503."
+    assert "Sensitive backend response body" not in str(error.value)
 
 
 def test_compute_guardrails_metrics():

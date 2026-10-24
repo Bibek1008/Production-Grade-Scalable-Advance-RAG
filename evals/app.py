@@ -28,7 +28,7 @@ nest_asyncio.apply()
 
 from evals.guardrails_eval import compute_guardrails_metrics, run_guardrails_eval
 from evals.metrics import run_all_metrics
-from evals.pipeline import load_golden_dataset, run_pipeline
+from evals.pipeline import BackendAPIError, load_golden_dataset, run_pipeline
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config
@@ -237,9 +237,15 @@ with tab2:
                     text=f"[{i + 1}/{total}] ✅ Done",
                 )
 
-        with logfire.span("🚀 Streamlit — Run Pipeline Button"):
-            enriched = run_pipeline(golden, progress_callback=pipeline_cb)
-            st.session_state.enriched_dataset = enriched
+        try:
+            with logfire.span("🚀 Streamlit — Run Pipeline Button"):
+                enriched = run_pipeline(golden, progress_callback=pipeline_cb)
+                st.session_state.enriched_dataset = enriched
+        except BackendAPIError as error:
+            status_slot.error(
+                f"{error} Check the backend health and logs. The response body is omitted to protect sensitive data."
+            )
+            st.stop()
 
         progress_bar.progress(100, text="✅ All responses collected!")
         status_slot.success(f"💾 {len(enriched['rag_samples'])} responses stored in session.")
