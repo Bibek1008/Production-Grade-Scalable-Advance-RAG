@@ -43,5 +43,9 @@ jobs:
           NEON_DB_URL: postgres://dummy:dummy@dummy.db:5432/dummy
           UPSTASH_REDIS_REST_URL: https://dummy.example.com
           UPSTASH_REDIS_REST_TOKEN: dummy
+          PORTKEY_API_KEY: dummy
+          PORTKEY_PRIMARY_SLUG: dummy-primary
+          PORTKEY_FALLBACK_SLUG: dummy-fallback
+          PORTKEY_PRIMARY_CONFIG_ID: dummy-config
         run: |
           python -m pytest tests/
