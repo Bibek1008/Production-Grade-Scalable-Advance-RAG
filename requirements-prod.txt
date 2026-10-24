@@ -21,8 +21,9 @@ redis==7.4.0
 # --- PRODUCTION PERSISTENCE ---
 tenacity==9.1.2
 langgraph-checkpoint-postgres==2.0.16
+psycopg==3.3.6
 psycopg-pool==3.3.0
-psycopg-binary==3.3.0
+psycopg-binary==3.3.6
 
 # --- JINA API EMBEDDINGS + LOCAL FALLBACK ---
 # sentence-transformers pulls torch; needed for the mxbai local fallback path.

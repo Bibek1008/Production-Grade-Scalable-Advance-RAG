@@ -65,6 +65,7 @@ def test_create_checkpointer_uses_small_pool_and_waits_for_initial_connection():
     assert options["min_size"] == 1
     assert options["max_size"] == 2
     assert options["num_workers"] == 1
+    assert options["timeout"] == 10
     assert options["kwargs"] == {"connect_timeout": 5}
     mock_pool.ConnectionPool.return_value.open.assert_called_once_with(wait=True, timeout=10)
     setup_saver.setup.assert_called_once()
