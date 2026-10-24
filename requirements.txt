@@ -1,5 +1,5 @@
 # ==============================================================================
-# ENTERPRISE AGENTIC RAG - REQUIREMENTS (Local, No GCP)
+# ENTERPRISE AGENTIC RAG - LOCAL, EVALUATION, AND INGESTION REQUIREMENTS
 # ==============================================================================
 
 # --- CORE API & WEB FRAMEWORK ---
@@ -7,7 +7,7 @@ fastapi                     # High-performance web framework for the API
 uvicorn[standard]           # ASGI server to run the FastAPI app
 python-dotenv               # For loading configuration from .env files
 requests                    # HTTP library for internal/external API calls
-streamlit                   # Frontend dashboard for the chat interface
+streamlit                   # Local Streamlit evaluation dashboard in evals/app.py
 numpy                       # Numerical processing
 pytz                        # Timezone handling for logs
 nest-asyncio                # Support for nested async loops in notebooks/streamlit

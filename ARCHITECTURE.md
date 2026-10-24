@@ -6,7 +6,7 @@ graph LR
     %% ── Interfaces ───────────────────────────────────────────────────────────
     subgraph UI ["🖥️  Interface Layer"]
         direction TB
-        CHAT["Streamlit\nChat UI"]
+        CHAT["Next.js\nChat UI"]
         EVAL_UI["Streamlit\nEval App"]
     end
 
@@ -125,7 +125,7 @@ graph TB
 
     subgraph UI ["1. User Interface"]
         direction LR
-        CHAT["Streamlit Chat UI"]
+        CHAT["Next.js Chat UI"]
         EAPP["Streamlit Eval App"]
     end
 
@@ -228,7 +228,7 @@ graph TB
 
 ```mermaid
 graph TB
-    A["🖥️ 1. Streamlit UI\nChat + Eval App"]
+    A["🖥️ 1. Next.js Chat UI\nVercel + Streamlit Eval App"]
     B["⚡ 2. FastAPI + 🛡️ NeMo Guardrails"]
     C["🧠 3. LangGraph Agent\nPlanner → Retriever → Responder"]
     D["🗄️ 4. Qdrant Cloud\n+ Jina AI Reranker"]

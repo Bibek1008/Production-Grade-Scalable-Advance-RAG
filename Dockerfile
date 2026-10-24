@@ -17,11 +17,10 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN python3 -c "import tomllib,subprocess; deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; subprocess.run(['uv','pip','install','--system','--no-cache']+deps,check=True)"
 
-# Layer: copy source — only invalidates on code changes, not dep changes.
+# Layer: copy backend source — only invalidates on code changes, not dep changes.
 COPY app/ ./app/
-COPY ui/ ./ui/
 
-# Expose the port documented in the task definitions and health checks.
+# Expose the backend service port.
 EXPOSE 8080
 
 # Run as a non-root user for production hardening.

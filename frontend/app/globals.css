@@ -11,7 +11,6 @@
   --text: #f3f4f7;
   --accent: #ff4b4b;
   --blue: #3b82f6;
-  --green: #2eb67d;
 }
 
 * {
@@ -85,7 +84,6 @@ button:disabled {
   background: #494a55;
 }
 
-.sidebar-status,
 .memory-card {
   display: flex;
   min-height: 56px;
@@ -97,16 +95,6 @@ button:disabled {
   font-size: 14px;
 }
 
-.sidebar-status {
-  background: #214536;
-  color: #a8f0c8;
-}
-
-.sidebar-status.unavailable-status {
-  background: #373842;
-  color: #dedee4;
-}
-
 .memory-card {
   background: #243958;
   color: #b6d4ff;
@@ -114,20 +102,6 @@ button:disabled {
 
 .memory-card code {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 999px;
-  background: var(--green);
-  box-shadow: 0 0 0 3px rgb(46 182 125 / 14%);
-}
-
-.status-dot.unavailable {
-  background: #a1a1aa;
-  box-shadow: 0 0 0 3px rgb(161 161 170 / 14%);
 }
 
 .clear-button {
@@ -171,20 +145,6 @@ button:disabled {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.13em;
-}
-
-.backend-label {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #c4c6cf;
-  font-size: 12px;
-}
-
-.backend-label .status-dot {
-  width: 7px;
-  height: 7px;
-  flex-basis: 7px;
 }
 
 .sidebar-toggle {

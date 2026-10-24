@@ -62,11 +62,16 @@ Start the API in one PowerShell terminal:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-Optionally start the UI in another:
+Start the Next.js frontend in another terminal:
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run ui/app.py
+Set-Location frontend
+npm ci
+Copy-Item .env.example .env.local
+npm run dev
 ```
+
+Set `BACKEND_API_URL` in `frontend/.env.local` to the local API origin. If authentication is enabled, configure `RAG_API_KEY` there; it is used only by the server-side proxy.
 
 Check service state:
 
@@ -84,6 +89,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/query `
 ```
 
 If `RAG_API_KEY` is configured, add an `Authorization: Bearer <key>` header to protected API requests.
+
+The separate Streamlit evaluation dashboard remains available at `evals/app.py`; it is not the user-facing chat application.
 
 ## Troubleshooting
 

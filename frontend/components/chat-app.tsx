@@ -64,6 +64,30 @@ function getErrorMessage(body: unknown, status: number): string {
   return `The backend returned an error (HTTP ${status}).`;
 }
 
+function normalizeSources(value: unknown): Source[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((source): Source[] => {
+    if (typeof source === "string") {
+      const content = source.trim();
+      return content ? [{ content }] : [];
+    }
+    if (!source || typeof source !== "object" || Array.isArray(source)) return [];
+
+    const candidate = source as Record<string, unknown>;
+    if (typeof candidate.content !== "string" || !candidate.content.trim()) return [];
+
+    const normalized: Exclude<Source, string> = { content: candidate.content.trim() };
+    if (typeof candidate.source === "string" && candidate.source.trim()) {
+      normalized.source = candidate.source.trim();
+    }
+    if (typeof candidate.score === "number" && Number.isFinite(candidate.score)) {
+      normalized.score = candidate.score;
+    }
+    return [normalized];
+  });
+}
+
 export function ChatApp() {
   const threadId = useSyncExternalStore(subscribeToThreadId, readThreadId, () => "");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -129,7 +153,7 @@ export function ChatApp() {
           content: data.answer ?? "No response.",
           blocked: isBlocked,
           steps: data.thought_process ?? [],
-          sources: data.sources ?? [],
+          sources: normalizeSources(data.sources),
         },
       ]);
     } catch (error) {
@@ -172,10 +196,6 @@ export function ChatApp() {
             </button>
           </div>
           <div className="sidebar-divider" />
-          <div className="sidebar-status unavailable-status" title="The backend does not expose Logfire status to the frontend.">
-            <span className="status-dot unavailable" />
-            <span>Logfire: Status unavailable</span>
-          </div>
           <div className="memory-card">
             <span>Memory ID:</span>
             <code>{threadId ? threadId.slice(0, 8) : "--------"}</code>
@@ -249,7 +269,7 @@ export function ChatApp() {
                               {message.sources.map((source, index) => {
                                 const item = typeof source === "string" ? { content: source } : source;
                                 const sourceName = item.source || "Retrieved context";
-                                const content = item.content || "";
+                                const content = item.content ?? "";
                                 const score =
                                   typeof item.score === "number" && Number.isFinite(item.score)
                                     ? item.score.toFixed(3)
@@ -258,7 +278,7 @@ export function ChatApp() {
                                   <details className="source-item" key={`${message.id}-source-${index}`}>
                                     <summary>
                                       <span>Chunk {index + 1}: {sourceName}</span>
-                                      {score && <span className="source-score">{score}</span>}
+                                      {score !== null && <span className="source-score">{score}</span>}
                                     </summary>
                                     <div className="source-content">
                                       <ReactMarkdown>{content}</ReactMarkdown>

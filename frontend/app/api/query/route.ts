@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 300;
 
 const DEFAULT_BACKEND_URL = "https://enterprise-rag-api-af4b.onrender.com";
+const MAX_REQUEST_BYTES = 16 * 1024;
+const MAX_QUESTION_LENGTH = 8_000;
+const MAX_THREAD_ID_LENGTH = 256;
 
 function getQueryEndpoint(): URL | null {
   try {
@@ -11,6 +14,7 @@ function getQueryEndpoint(): URL | null {
       !["http:", "https:"].includes(backend.protocol) ||
       backend.username ||
       backend.password ||
+      backend.pathname !== "/" ||
       backend.search ||
       backend.hash
     ) {
@@ -22,10 +26,51 @@ function getQueryEndpoint(): URL | null {
   }
 }
 
+async function readRequestBody(request: NextRequest): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_REQUEST_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 export async function POST(request: NextRequest) {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredLength = Number(contentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength < 0) {
+      return NextResponse.json({ detail: "Content-Length is invalid." }, { status: 400 });
+    }
+    if (declaredLength > MAX_REQUEST_BYTES) {
+      return NextResponse.json({ detail: "Request body is too large." }, { status: 413 });
+    }
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
+    const rawBody = await readRequestBody(request);
+    if (rawBody === null) {
+      return NextResponse.json({ detail: "Request body is too large." }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ detail: "Request body must be valid JSON." }, { status: 400 });
   }
@@ -35,11 +80,20 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = body as Record<string, unknown>;
+  if (Object.keys(payload).some((key) => key !== "q" && key !== "thread_id")) {
+    return NextResponse.json({ detail: "Request contains unsupported fields." }, { status: 422 });
+  }
   if (typeof payload.q !== "string" || payload.q.trim().length === 0) {
     return NextResponse.json({ detail: "Question must be a non-empty string." }, { status: 422 });
   }
+  if (payload.q.length > MAX_QUESTION_LENGTH) {
+    return NextResponse.json({ detail: "Question is too long." }, { status: 422 });
+  }
   if (payload.thread_id !== undefined && payload.thread_id !== null && typeof payload.thread_id !== "string") {
     return NextResponse.json({ detail: "thread_id must be a string or null." }, { status: 422 });
+  }
+  if (typeof payload.thread_id === "string" && payload.thread_id.length > MAX_THREAD_ID_LENGTH) {
+    return NextResponse.json({ detail: "thread_id is too long." }, { status: 422 });
   }
 
   const endpoint = getQueryEndpoint();
