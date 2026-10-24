@@ -74,7 +74,7 @@ def test_query_stage_log_has_request_id_and_elapsed_time():
             request_logging.log_query_stage(
                 "guardrails",
                 "completed",
-                started_at=0.0,
+                started_at=request_logging.time.perf_counter(),
                 outcome="allowed",
                 api_key="test-secret",
                 query="private query",
