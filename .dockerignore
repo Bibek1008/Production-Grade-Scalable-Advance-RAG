@@ -20,6 +20,7 @@ tenvv/
 
 # Environment & secrets
 .env
+frontend/.env.local
 commands.md
 
 # Git & IDE
@@ -34,13 +35,17 @@ commands.md
 # Claude Code memory
 .claude/
 
-# Data — lives in GCS, not in the container
+# Data is not needed in the backend runtime image.
 DATA/
 
-# Eval suite — runs locally only, not in Cloud Run
+# Frontend build artifacts and installed packages are not part of the backend image.
+frontend/node_modules/
+frontend/.next/
+
+# Evaluation tooling is run separately from the backend service.
 evals/
 
-# Notebooks & docs — not needed at runtime
+# Notebooks and documentation are not needed at runtime.
 notebooks/
 DOCS/
 
