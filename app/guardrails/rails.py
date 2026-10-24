@@ -1,5 +1,6 @@
 import logfire
 from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
 
 from app.config import settings
 from app.gateway import get_portkey_llm
@@ -23,7 +24,7 @@ def initialize_rails() -> None:
     )
     config = RailsConfig.from_content(colang_content=COLANG_CONTENT, yaml_content=yaml_content)
 
-    _rails = LLMRails(config, llm=guard_llm)
+    _rails = LLMRails(config, llm=LangChainLLMAdapter(guard_llm))
     logfire.info("🛡️ NeMo Guardrails initialised (Gemini).")
 
 
@@ -49,8 +50,8 @@ def guard(message: str) -> tuple[bool, str | None]:
         fired = any(indicator in content for indicator in RAIL_INDICATORS)
 
         if fired:
-            logfire.info(f"🛡️ Guardrails fired | query='{message[:80]}'")
+            logfire.info("Guardrails blocked the request.")
             return True, content
 
-        logfire.info("✅ Guardrails passed.")
+        logfire.info("Guardrails allowed the request.")
         return False, None

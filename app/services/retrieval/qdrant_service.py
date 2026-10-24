@@ -1,8 +1,11 @@
+import time
+
 import logfire
 from qdrant_client import QdrantClient
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from app.config import settings
+from app.logging import log_query_stage
 from app.services.retrieval.embedding import embed_query
 
 # Initialize Qdrant Client
@@ -20,11 +23,28 @@ def _search_enterprise_knowledge(query: str, limit: int = 8):
     query_vector = embed_query(query)
 
     # Using query_points - the modern standard for Qdrant
-    response = client.query_points(
-        collection_name=settings.QDRANT_COLLECTION,
-        query=query_vector,
-        limit=limit,
-        with_payload=True,  # JSON
+    started_at = time.perf_counter()
+    log_query_stage("qdrant_search", "started", limit=limit)
+    try:
+        response = client.query_points(
+            collection_name=settings.QDRANT_COLLECTION,
+            query=query_vector,
+            limit=limit,
+            with_payload=True,  # JSON
+        )
+    except Exception as error:
+        log_query_stage(
+            "qdrant_search",
+            "failed",
+            started_at=started_at,
+            error=error,
+        )
+        raise
+    log_query_stage(
+        "qdrant_search",
+        "completed",
+        started_at=started_at,
+        result_count=len(response.points),
     )
 
     results = []

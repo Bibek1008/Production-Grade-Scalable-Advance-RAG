@@ -1,8 +1,10 @@
 """Tests for health and readiness endpoints."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.memory import MemorySaver
 
 from app.main import app
 from app.services.health.connection_checker import ConnectionResult
@@ -23,7 +25,8 @@ def test_health_returns_ok():
     assert response.json()["status"] == "ok"
 
 
-def test_ready_when_all_dependencies_healthy():
+def test_ready_when_all_dependencies_healthy(monkeypatch):
+    monkeypatch.setattr(app.state, "rag_agent", None, raising=False)
     results = {
         "postgres": _ok("postgres"),
         "redis": _ok("redis"),
@@ -73,3 +76,14 @@ def test_ready_ignores_unavailable_optional_services():
 
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_ready_reports_memory_checkpointer_as_non_durable(monkeypatch):
+    monkeypatch.setattr(app.state, "rag_agent", SimpleNamespace(checkpointer=MemorySaver()), raising=False)
+    with patch("app.health.check_all_connections", return_value={"qdrant": _ok("qdrant")}):
+        response = TestClient(app).get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["checks"]["checkpointer"] == (
+        "unavailable: MemorySaver active; checkpoint data is not durable"
+    )
