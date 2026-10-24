@@ -23,8 +23,9 @@ dependencies = [
     # --- PRODUCTION PERSISTENCE & RELIABILITY ---
     "tenacity==9.1.2",
     "langgraph-checkpoint-postgres==2.0.16",
+    "psycopg==3.3.6",
     "psycopg-pool==3.3.0",
-    "psycopg-binary==3.3.0",
+    "psycopg-binary==3.3.6",
     "slowapi==0.1.9",
 
     # --- JINA API EMBEDDINGS + LOCAL FALLBACK ---

@@ -48,8 +48,9 @@ langchain-nvidia-ai-endpoints # LangChain integration with NVIDIA AI Endpoints
 
 # --- PRODUCTION PERSISTENCE & RELIABILITY ---
 langgraph-checkpoint-postgres  # Postgres-backed LangGraph checkpointer
-psycopg-pool                   # Connection pool for PostgresSaver
-psycopg-binary                 # PostgreSQL driver
+psycopg==3.3.6                 # Keep the Python driver aligned with its binary extension
+psycopg-pool==3.3.0            # Connection pool for PostgresSaver
+psycopg-binary==3.3.6          # PostgreSQL driver extension
 tenacity                       # Retry-with-backoff for external calls
 slowapi                        # Redis-backed API rate limiting (Limiter class)
 redis                          # Redis client for rate limiting
