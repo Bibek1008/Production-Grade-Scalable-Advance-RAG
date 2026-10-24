@@ -72,7 +72,8 @@ def test_logfire_base_url_uses_explicit_setting_or_eu_token():
     assert explicit_config.logfire_base_url == "https://logfire.example.com"
 
 
-def test_neon_uri_requires_configuration():
+def test_neon_uri_requires_configuration(monkeypatch):
+    monkeypatch.delenv("NEON_DB_URL", raising=False)
     config = Settings(_env_file=None, GEMINI_API_KEY="test-key")
     with pytest.raises(ValueError, match="NEON_DB_URL is not configured"):
         _ = config.postgres_uri
